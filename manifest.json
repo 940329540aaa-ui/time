@@ -1,0 +1,13 @@
+{
+  "name": "柳比歇夫时间管理",
+  "short_name": "时间管理",
+  "description": "个人时间统计与规划 - 基于柳比歇夫时间管理法",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f5f5f5",
+  "theme_color": "#4f46e5",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
