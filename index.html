@@ -15,27 +15,28 @@
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 :root {
-  --bg: #f5f5f5; --card-bg: #fff; --text: #333; --text-secondary: #666;
-  --border: #e0e0e0; --primary: #4f46e5; --primary-light: #eef2ff;
-  --sidebar-bg: #1e1b4b; --sidebar-text: #c7d2fe; --sidebar-active: #fff;
+  --bg: #f1f5f9; --card-bg: #fff; --text: #1e293b; --text-secondary: #64748b;
+  --border: #e2e8f0; --primary: #4f46e5; --primary-light: #eef2ff;
+  --sidebar-bg: #0f172a; --sidebar-text: #94a3b8; --sidebar-active: #fff;
   --danger: #ef4444; --success: #10b981; --warning: #f59e0b;
   --cat-work: #4f46e5; --cat-sleep: #8b5cf6; --cat-ent: #f59e0b;
   --cat-social: #10b981; --cat-learn: #3b82f6; --cat-exercise: #ef4444;
-  --radius: 12px; --shadow: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.06);
+  --radius: 12px; --shadow: 0 1px 2px rgba(0,0,0,.05), 0 2px 6px rgba(0,0,0,.06);
+  --shadow-md: 0 4px 12px rgba(0,0,0,.08);
 }
 body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); display: flex; min-height: 100vh; font-size: 18px; }
 .sidebar { width: 240px; background: var(--sidebar-bg); color: #fff; padding: 24px 0; display: flex; flex-direction: column; position: fixed; top: 0; left: 0; bottom: 0; z-index: 100; }
-.sidebar-logo { padding: 0 20px 24px; font-size: 23px; font-weight: 700; letter-spacing: .5px; border-bottom: 1px solid rgba(255,255,255,.1); margin-bottom: 16px; }
-.sidebar-logo span { font-size: 14px; font-weight: 400; opacity: .6; display: block; margin-top: 4px; }
+.sidebar-logo { padding: 0 20px 24px; font-size: 23px; font-weight: 700; letter-spacing: .5px; border-bottom: 1px solid rgba(255,255,255,.08); margin-bottom: 16px; }
+.sidebar-logo span { font-size: 13px; font-weight: 400; opacity: .5; display: block; margin-top: 4px; }
 .sidebar-nav { flex: 1; padding: 0 12px; }
-.sidebar-nav a { display: flex; align-items: center; gap: 10px; padding: 10px 12px; color: var(--sidebar-text); text-decoration: none; border-radius: 8px; font-size: 16px; margin-bottom: 2px; transition: all .2s; cursor: pointer; }
-.sidebar-nav a:hover { background: rgba(255,255,255,.08); color: #fff; }
-.sidebar-nav a.active { background: rgba(255,255,255,.15); color: var(--sidebar-active); font-weight: 600; }
+.sidebar-nav a { display: flex; align-items: center; gap: 10px; padding: 10px 12px; color: var(--sidebar-text); text-decoration: none; border-radius: 8px; font-size: 16px; margin-bottom: 2px; transition: all .15s; cursor: pointer; }
+.sidebar-nav a:hover { background: rgba(255,255,255,.06); color: #e2e8f0; }
+.sidebar-nav a.active { background: rgba(255,255,255,.1); color: var(--sidebar-active); font-weight: 600; }
 .sidebar-nav a svg { width: 20px; height: 20px; flex-shrink: 0; }
 .main { margin-left: 240px; flex: 1; padding: 28px 32px; max-width: calc(100vw - 240px); }
 .page { display: none; }
 .page.active { display: block; }
-h2 { font-size: 26px; margin-bottom: 20px; font-weight: 700; }
+h2 { font-size: 26px; margin-bottom: 20px; font-weight: 700; color: var(--text); }
 
 .stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
 .stat-card { background: var(--card-bg); padding: 20px; border-radius: var(--radius); box-shadow: var(--shadow); }
@@ -46,7 +47,7 @@ h2 { font-size: 26px; margin-bottom: 20px; font-weight: 700; }
 .charts-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
 .chart-card { background: var(--card-bg); padding: 20px; border-radius: var(--radius); box-shadow: var(--shadow); }
 .chart-card.full { grid-column: 1 / -1; }
-.chart-card h3 { font-size: 18px; margin-bottom: 16px; color: var(--text-secondary); font-weight: 600; }
+.chart-card h3 { font-size: 17px; margin-bottom: 16px; color: var(--text); font-weight: 600; }
 .chart-wrap { position: relative; height: 300px; }
 .chart-wrap.tall { height: 400px; }
 
@@ -384,10 +385,11 @@ function renderDashboard(main) {
     },
     options: {
       responsive: true, maintainAspectRatio: false,
+      layout: { padding: { bottom: 8 } },
       plugins: {
-        legend: { position: 'bottom', labels: { padding: 16, usePointStyle: true } },
+        legend: { position: 'bottom', labels: { padding: 14, usePointStyle: true, font: { size: 12 }, boxWidth: 10 } },
         datalabels: {
-          color: '#fff', font: { weight: 'bold', size: 13 },
+          color: '#fff', font: { weight: 'bold', size: 12 },
           formatter: (v, ctx) => { const sum = ctx.dataset.data.reduce((a,b)=>a+b,0); const pct = sum>0 ? Math.round(v/sum*100) : 0; return pct >= 5 ? pct + '%' : ''; }
         }
       }
@@ -462,8 +464,8 @@ function renderRecords(main) {
     for (const date of sortedDates) {
       const items = grouped[date];
       const dayTotal = items.reduce((s, r) => s + r.hours, 0);
-      const [, mo, d] = date.match(/(\d{4})\.(\d+)\.(\d+)/) || [];
-      const dayOfWeek = ['日','一','二','三','四','五','六'][new Date(parseInt(mo), parseInt(d)-1, parseInt(d)).getDay()];
+      const [, year, month, day] = date.match(/(\d{4})\.(\d+)\.(\d+)/) || [];
+      const dayOfWeek = ['日','一','二','三','四','五','六'][new Date(parseInt(year), parseInt(month)-1, parseInt(day)).getDay()];
       html += '<div style="background:#fff;border-radius:var(--radius);box-shadow:var(--shadow);margin-bottom:12px;overflow:hidden;">' +
         '<div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:#fafafa;border-bottom:1px solid var(--border);font-weight:600;font-size:15px;">' +
           date + ' 周' + dayOfWeek +
@@ -601,10 +603,11 @@ function renderCategories(main) {
       },
       options: {
         responsive: true, maintainAspectRatio: false,
+        layout: { padding: { bottom: 8 } },
         plugins: {
-          legend: { position: 'bottom', labels: { padding: 12, usePointStyle: true } },
+          legend: { position: 'bottom', labels: { padding: 14, usePointStyle: true, font: { size: 12 }, boxWidth: 10 } },
           datalabels: {
-            color: '#fff', font: { weight: 'bold', size: 13 },
+            color: '#fff', font: { weight: 'bold', size: 12 },
             formatter: (v, ctx) => { const sum = ctx.dataset.data.reduce((a,b)=>a+b,0); const pct = sum>0 ? Math.round(v/sum*100) : 0; return pct >= 5 ? pct + '%' : ''; }
           }
         }
@@ -663,7 +666,7 @@ function renderMonthly(main) {
 
   main.innerHTML = html;
 
-  // Bar chart
+  // Horizontal stacked bar chart
   const ctx1 = document.getElementById('chart-monthly-bar').getContext('2d');
   charts['monthly-bar'] = new Chart(ctx1, {
     type: 'bar',
@@ -676,9 +679,11 @@ function renderMonthly(main) {
       }))
     },
     options: {
+      indexAxis: 'y',
       responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { position: 'bottom', labels: { padding: 12, usePointStyle: true } } },
-      scales: { y: { stacked: false, title: { display: true, text: '小时' } } }
+      layout: { padding: { bottom: 8 } },
+      plugins: { legend: { position: 'bottom', labels: { padding: 14, usePointStyle: true, font: { size: 12 }, boxWidth: 10 } } },
+      scales: { x: { stacked: true, title: { display: true, text: '小时' } }, y: { stacked: true } }
     }
   });
 
@@ -852,7 +857,7 @@ window.deleteMatrixTask = function(id) {
 
 // ===== ADD / EDIT / DELETE RECORDS =====
 function toDateInput(d) { const p = d.split('.'); return p.length === 3 ? `${p[0]}-${p[1].padStart(2,'0')}-${p[2].padStart(2,'0')}` : d; }
-function fromDateInput(d) { return d.replace(/-/g, '.'); }
+function fromDateInput(d) { const p = d.split('-'); return p[0] + '.' + parseInt(p[1]) + '.' + parseInt(p[2]); }
 function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/'/g,'&#39;'); }
 
 window.showAddModal = function() {
