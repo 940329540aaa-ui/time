@@ -98,19 +98,39 @@ tr:hover td { background: #fafafa; }
 .empty-state svg { width: 64px; height: 64px; opacity: .3; margin-bottom: 16px; }
 
 @media (max-width: 768px) {
-  .sidebar { width: 100%; height: auto; position: relative; padding: 12px; flex-direction: row; flex-wrap: wrap; }
-  .sidebar-logo { width: 100%; padding: 0 0 12px; border: none; margin: 0; }
-  .sidebar-nav { display: flex; gap: 4px; padding: 0; overflow-x: auto; -webkit-overflow-scrolling: touch; }
-  .sidebar-nav a { font-size: 14px; padding: 8px 10px; white-space: nowrap; flex-shrink: 0; }
-  .main { margin-left: 0; max-width: 100%; padding: 16px; }
+  .sidebar { width: 100%; height: auto; position: relative; padding: 8px 10px; flex-direction: row; flex-wrap: wrap; }
+  .sidebar-logo { width: 100%; padding: 0 0 8px; border: none; margin: 0; font-size: 18px; }
+  .sidebar-logo span { font-size: 12px; }
+  .sidebar-nav { display: flex; gap: 2px; padding: 0; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .sidebar-nav a { font-size: 13px; padding: 6px 10px; white-space: nowrap; flex-shrink: 0; }
+  .sidebar-nav a svg { width: 16px; height: 16px; }
+  .main { margin-left: 0; max-width: 100%; padding: 14px 10px; }
   .charts-row { grid-template-columns: 1fr; }
   .matrix-grid { grid-template-columns: 1fr; height: auto; }
   table { font-size: 14px; }
   th, td { padding: 6px 8px; }
   .filters { flex-direction: column; gap: 8px; }
   .filters select, .filters input { width: 100%; }
-  .chart-wrap { height: 250px; }
-  .chart-wrap.tall { height: 300px; }
+  .chart-wrap { height: 230px; }
+  .chart-wrap.tall { height: 280px; }
+  h2 { font-size: 22px; }
+  .btn { font-size: 14px; padding: 6px 12px; }
+  .cat-grid-mobile { grid-template-columns: 1fr !important; }
+}
+
+@media (max-width: 480px) {
+  .stats-row { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .stat-card { padding: 12px; }
+  .stat-card .value { font-size: 24px; }
+  .stat-card .label { font-size: 13px; }
+  .stat-card .sub { font-size: 12px; }
+  .modal { padding: 16px; width: 95vw; }
+  .modal input, .modal select { font-size: 15px; }
+  .btn { font-size: 13px; padding: 6px 10px; }
+  h2 { font-size: 20px; }
+  body { font-size: 16px; }
+  .chart-wrap { height: 220px; }
+  .chart-wrap.tall { height: 260px; }
 }
 
 /* Scrollbar */
@@ -120,12 +140,9 @@ tr:hover td { background: #fafafa; }
 ::-webkit-scrollbar-thumb:hover { background: #a1a1a1; }
 * { scrollbar-width: thin; scrollbar-color: #c1c1c1 transparent; }
 
-@media (max-width: 480px) {
-  .stats-row { grid-template-columns: 1fr 1fr; gap: 8px; }
-  .stat-card { padding: 12px; }
-  .stat-card .value { font-size: 26px; }
-  .modal { padding: 16px; width: 95vw; }
-}
+/* Mobile horizontal scroll helper */
+.table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; max-width: 100%; }
+.table-scroll table { min-width: 600px; white-space: nowrap; }
 </style>
 </head>
 <body>
@@ -448,10 +465,10 @@ function renderRecords(main) {
       const [, mo, d] = date.match(/(\d{4})\.(\d+)\.(\d+)/) || [];
       const dayOfWeek = ['日','一','二','三','四','五','六'][new Date(parseInt(mo), parseInt(d)-1, parseInt(d)).getDay()];
       html += '<div style="background:#fff;border-radius:var(--radius);box-shadow:var(--shadow);margin-bottom:12px;overflow:hidden;">' +
-        '<div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:#fafafa;border-bottom:1px solid var(--border);font-weight:600;font-size:16px;">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:#fafafa;border-bottom:1px solid var(--border);font-weight:600;font-size:15px;">' +
           date + ' 周' + dayOfWeek +
-          '<span style="font-weight:400;color:var(--text-secondary);font-size:14px;">合计 ' + formatHours(dayTotal) + '</span>' +
-        '</div><table style="margin:0;"><tbody>';
+          '<span style="font-weight:400;color:var(--text-secondary);font-size:13px;">合计 ' + formatHours(dayTotal) + '</span>' +
+        '</div><div class="table-scroll"><table style="margin:0;min-width:500px;"><tbody>';
       for (let i = 0; i < items.length; i++) {
         const r = items[i];
         html += '<tr>' +
@@ -464,7 +481,7 @@ function renderRecords(main) {
             '<button class="btn btn-sm btn-danger rec-del" data-idx="' + i + '" data-date="' + date + '">🗑</button>' +
           '</td></tr>';
       }
-      html += '</tbody></table></div>';
+      html += '</tbody></table></div></div>';
     }
     document.getElementById('records-list').innerHTML = html || '<div class="empty-state">暂无记录</div>';
   }
@@ -549,7 +566,7 @@ function renderCategories(main) {
 
     // Activity breakdown - full width
     html += '<div class="chart-card" style="margin-top:16px;"><h3>各分类活动明细</h3>';
-    html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px;max-height:500px;overflow-y:auto;">';
+    html += '<div class="cat-grid-mobile" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;max-height:500px;overflow-y:auto;">';
     for (const [cat, stats] of sorted) {
       const actHours = {};
       for (const r of records.filter(r => r.category === cat)) {
@@ -608,7 +625,7 @@ function renderMonthly(main) {
   let html = '<h2>📅 月度对比</h2>';
 
   // Summary table
-  html += '<div class="chart-card" style="margin-bottom:16px;overflow-x:auto;"><h3>各月总览</h3><table><thead><tr><th>月份</th><th>记录天数</th><th>记录条数</th><th>总时间</th><th>日均</th>';
+  html += '<div class="chart-card" style="margin-bottom:16px;"><h3>各月总览</h3><div class="table-scroll"><table><thead><tr><th>月份</th><th>天数</th><th>条数</th><th>总时间</th><th>日均</th>';
   for (const cat of allCats) html += `<th>${cat}</th>`;
   html += '</tr></thead><tbody>';
 
@@ -636,7 +653,7 @@ function renderMonthly(main) {
     html += '<td>' + formatHours(h) + ' <span style="font-size:12px;font-weight:400;">' + pct + '%</span></td>';
   }
   html += '</tr>';
-  html += '</tbody></table></div>';
+  html += '</tbody></table></div></div>';
 
   // Bar chart comparison
   html += '<div class="charts-row"><div class="chart-card full"><h3>月度分类对比</h3><div class="chart-wrap tall"><canvas id="chart-monthly-bar"></canvas></div></div></div>';
