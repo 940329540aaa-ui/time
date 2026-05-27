@@ -1,0 +1,997 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#4f46e5">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="时间管理">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>柳比歇夫时间管理</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+:root {
+  --bg: #f5f5f5; --card-bg: #fff; --text: #333; --text-secondary: #666;
+  --border: #e0e0e0; --primary: #4f46e5; --primary-light: #eef2ff;
+  --sidebar-bg: #1e1b4b; --sidebar-text: #c7d2fe; --sidebar-active: #fff;
+  --danger: #ef4444; --success: #10b981; --warning: #f59e0b;
+  --cat-work: #4f46e5; --cat-sleep: #8b5cf6; --cat-ent: #f59e0b;
+  --cat-social: #10b981; --cat-learn: #3b82f6; --cat-exercise: #ef4444;
+  --radius: 12px; --shadow: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.06);
+}
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); display: flex; min-height: 100vh; font-size: 18px; }
+.sidebar { width: 240px; background: var(--sidebar-bg); color: #fff; padding: 24px 0; display: flex; flex-direction: column; position: fixed; top: 0; left: 0; bottom: 0; z-index: 100; }
+.sidebar-logo { padding: 0 20px 24px; font-size: 23px; font-weight: 700; letter-spacing: .5px; border-bottom: 1px solid rgba(255,255,255,.1); margin-bottom: 16px; }
+.sidebar-logo span { font-size: 14px; font-weight: 400; opacity: .6; display: block; margin-top: 4px; }
+.sidebar-nav { flex: 1; padding: 0 12px; }
+.sidebar-nav a { display: flex; align-items: center; gap: 10px; padding: 10px 12px; color: var(--sidebar-text); text-decoration: none; border-radius: 8px; font-size: 16px; margin-bottom: 2px; transition: all .2s; cursor: pointer; }
+.sidebar-nav a:hover { background: rgba(255,255,255,.08); color: #fff; }
+.sidebar-nav a.active { background: rgba(255,255,255,.15); color: var(--sidebar-active); font-weight: 600; }
+.sidebar-nav a svg { width: 20px; height: 20px; flex-shrink: 0; }
+.main { margin-left: 240px; flex: 1; padding: 28px 32px; max-width: calc(100vw - 240px); }
+.page { display: none; }
+.page.active { display: block; }
+h2 { font-size: 26px; margin-bottom: 20px; font-weight: 700; }
+
+.stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
+.stat-card { background: var(--card-bg); padding: 20px; border-radius: var(--radius); box-shadow: var(--shadow); }
+.stat-card .label { font-size: 15px; color: var(--text-secondary); margin-bottom: 6px; }
+.stat-card .value { font-size: 33px; font-weight: 700; }
+.stat-card .sub { font-size: 14px; color: var(--text-secondary); margin-top: 4px; }
+
+.charts-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+.chart-card { background: var(--card-bg); padding: 20px; border-radius: var(--radius); box-shadow: var(--shadow); }
+.chart-card.full { grid-column: 1 / -1; }
+.chart-card h3 { font-size: 18px; margin-bottom: 16px; color: var(--text-secondary); font-weight: 600; }
+.chart-wrap { position: relative; height: 300px; }
+.chart-wrap.tall { height: 400px; }
+
+table { width: 100%; border-collapse: collapse; font-size: 16px; }
+th { text-align: left; padding: 10px 12px; border-bottom: 2px solid var(--border); color: var(--text-secondary); font-weight: 600; font-size: 15px; white-space: nowrap; }
+td { padding: 8px 12px; border-bottom: 1px solid var(--border); }
+tr:hover td { background: #fafafa; }
+
+.filters { display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; align-items: center; }
+.filters select, .filters input { padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 16px; background: #fff; outline: none; }
+.filters select:focus, .filters input:focus { border-color: var(--primary); }
+.btn { padding: 8px 16px; border: none; border-radius: 8px; cursor: pointer; font-size: 16px; font-weight: 500; transition: all .2s; }
+.btn-primary { background: var(--primary); color: #fff; }
+.btn-primary:hover { opacity: .9; }
+.btn-sm { padding: 4px 10px; font-size: 13px; }
+.btn-danger { background: var(--danger); color: #fff; }
+.btn-outline { background: #fff; border: 1px solid var(--border); }
+
+.category-tag { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 13px; font-weight: 500; }
+.cat-睡眠与休息 { background: #f3e8ff; color: #7c3aed; }
+.cat-科研任务 { background: #eef2ff; color: #4f46e5; }
+.cat-娱乐 { background: #fef3c7; color: #d97706; }
+.cat-生活事务 { background: #d1fae5; color: #059669; }
+.cat-兴趣学习 { background: #dbeafe; color: #2563eb; }
+.cat-运动 { background: #fee2e2; color: #dc2626; }
+
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 200; display: flex; align-items: center; justify-content: center; }
+.modal { background: #fff; border-radius: var(--radius); padding: 24px; width: 440px; max-width: 90vw; box-shadow: 0 20px 60px rgba(0,0,0,.15); }
+.modal h3 { margin-bottom: 16px; }
+.modal .form-group { margin-bottom: 14px; }
+.modal label { display: block; font-size: 15px; color: var(--text-secondary); margin-bottom: 4px; font-weight: 500; }
+.modal input, .modal select { width: 100%; padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 16px; outline: none; }
+.modal input:focus, .modal select:focus { border-color: var(--primary); }
+.modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
+
+.matrix-grid { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 16px; height: calc(100vh - 180px); min-height: 400px; }
+.matrix-q { border-radius: var(--radius); padding: 20px; background: #fff; box-shadow: var(--shadow); overflow-y: auto; }
+.matrix-q h3 { font-size: 16px; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 2px solid var(--border); }
+.matrix-item { padding: 10px 12px; background: #f9fafb; border-radius: 8px; margin-bottom: 8px; font-size: 16px; cursor: pointer; transition: all .2s; }
+.matrix-item:hover { background: #f3f4f6; }
+.matrix-item .task { font-weight: 600; }
+.matrix-item .detail { font-size: 13px; color: var(--text-secondary); margin-top: 4px; }
+.q-urgent-important { border-top: 4px solid var(--danger); }
+.q-noturgent-important { border-top: 4px solid var(--primary); }
+.q-urgent-notimportant { border-top: 4px solid var(--warning); }
+.q-noturgent-notimportant { border-top: 4px solid #9ca3af; }
+
+.empty-state { text-align: center; padding: 60px 20px; color: var(--text-secondary); }
+.empty-state svg { width: 64px; height: 64px; opacity: .3; margin-bottom: 16px; }
+
+@media (max-width: 768px) {
+  .sidebar { width: 100%; height: auto; position: relative; padding: 12px; flex-direction: row; flex-wrap: wrap; }
+  .sidebar-logo { width: 100%; padding: 0 0 12px; border: none; margin: 0; }
+  .sidebar-nav { display: flex; gap: 4px; padding: 0; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .sidebar-nav a { font-size: 14px; padding: 8px 10px; white-space: nowrap; flex-shrink: 0; }
+  .main { margin-left: 0; max-width: 100%; padding: 16px; }
+  .charts-row { grid-template-columns: 1fr; }
+  .matrix-grid { grid-template-columns: 1fr; height: auto; }
+  table { font-size: 14px; }
+  th, td { padding: 6px 8px; }
+  .filters { flex-direction: column; gap: 8px; }
+  .filters select, .filters input { width: 100%; }
+  .chart-wrap { height: 250px; }
+  .chart-wrap.tall { height: 300px; }
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #c1c1c1; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #a1a1a1; }
+* { scrollbar-width: thin; scrollbar-color: #c1c1c1 transparent; }
+
+@media (max-width: 480px) {
+  .stats-row { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .stat-card { padding: 12px; }
+  .stat-card .value { font-size: 26px; }
+  .modal { padding: 16px; width: 95vw; }
+}
+</style>
+</head>
+<body>
+
+<aside class="sidebar">
+  <div class="sidebar-logo">柳比歇夫时间管理<span>个人时间统计与规划</span></div>
+  <nav class="sidebar-nav">
+    <a class="active" data-page="dashboard">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+      总览
+    </a>
+    <a data-page="records">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+      每日记录
+    </a>
+    <a data-page="categories">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+      分类分析
+    </a>
+    <a data-page="monthly">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+      月度对比
+    </a>
+    <a data-page="matrix">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="8" height="8"/><rect x="13" y="3" width="8" height="8"/><rect x="3" y="13" width="8" height="8"/><rect x="13" y="13" width="8" height="8"/></svg>
+      艾森豪威尔矩阵
+    </a>
+  </nav>
+</aside>
+
+<main class="main" id="main-content"></main>
+
+<!-- Modal -->
+<div class="modal-overlay" id="modal" style="display:none">
+  <div class="modal" id="modal-content"></div>
+</div>
+
+<script>
+Chart.register(ChartDataLabels);
+// ===== DATA =====
+const EMBEDDED_DATA = {"months": {"2026.3": [{"date": "2026.3.16", "location": "邢台-石家庄", "activity": "学习柳比歇夫时间管理", "category": "兴趣学习", "hours": 1.0}, {"date": "2026.3.16", "location": "邢台-石家庄", "activity": "整理导师基金文献格式", "category": "科研任务", "hours": 1.0}, {"date": "2026.3.16", "location": "邢台-石家庄", "activity": "睡眠", "category": "睡眠与休息", "hours": 7.5}, {"date": "2026.3.16", "location": "邢台-石家庄", "activity": "完善论文试验方案 （直接剪切+巴西劈裂）", "category": "科研任务", "hours": 1.75}, {"date": "2026.3.16", "location": "邢台-石家庄", "activity": "和AI交流", "category": "生活事务", "hours": 0.25}, {"date": "2026.3.16", "location": "邢台-石家庄", "activity": "晚饭 躺下休息", "category": "娱乐", "hours": 2.0}, {"date": "2026.3.16", "location": "邢台-石家庄", "activity": "搜集浏览界面渗流试验文献（wu wei）", "category": "科研任务", "hours": 1.75}, {"date": "2026.3.16", "location": "邢台-石家庄", "activity": "女友视频通话", "category": "生活事务", "hours": 1.5}, {"date": "2026.3.17", "location": "石家庄", "activity": "同导师汇报试验方案", "category": "科研任务", "hours": 0.75}, {"date": "2026.3.17", "location": "石家庄", "activity": "整理试验方案修改内容", "category": "科研任务", "hours": 0.25}, {"date": "2026.3.17", "location": "石家庄", "activity": "睡眠", "category": "睡眠与休息", "hours": 9.5}, {"date": "2026.3.17", "location": "石家庄", "activity": "无氧训练", "category": "运动", "hours": 1.25}, {"date": "2026.3.17", "location": "石家庄", "activity": "修改论文试验方案", "category": "科研任务", "hours": 4.0}, {"date": "2026.3.17", "location": "石家庄", "activity": "优化时间管理", "category": "兴趣学习", "hours": 1.0}, {"date": "2026.3.17", "location": "石家庄", "activity": "学习柳比歇夫时间管理", "category": "兴趣学习", "hours": 0.25}, {"date": "2026.3.17", "location": "石家庄", "activity": "女友视频通话", "category": "生活事务", "hours": 2.0}, {"date": "2026.3.18", "location": "石家庄", "activity": "麻将手游", "category": "娱乐", "hours": 3.0}, {"date": "2026.3.18", "location": "石家庄", "activity": "睡眠", "category": "睡眠与休息", "hours": 7.0}, {"date": "2026.3.18", "location": "石家庄", "activity": "健身房锻炼", "category": "运动", "hours": 1.5}, {"date": "2026.3.18", "location": "石家庄", "activity": "了解macbook neo", "category": "兴趣学习", "hours": 0.25}, {"date": "2026.3.18", "location": "石家庄", "activity": "修改查询试验方案", "category": "科研任务", "hours": 2.5}, {"date": "2026.3.18", "location": "石家庄", "activity": "和老师交流试验方案", "category": "科研任务", "hours": 1.0}, {"date": "2026.3.18", "location": "石家庄", "activity": "查注浆对CAES硐室的必要意义， 气体泄露路径。", "category": "科研任务", "hours": 2.0}, {"date": "2026.3.18", "location": "石家庄", "activity": "女友视频通话", "category": "生活事务", "hours": 1.0}, {"date": "2026.3.18", "location": "石家庄", "activity": "麻将手游", "category": "娱乐", "hours": 1.0}, {"date": "2026.3.19", "location": "石家庄", "activity": "睡眠", "category": "睡眠与休息", "hours": 7.5}, {"date": "2026.3.19", "location": "石家庄", "activity": "《石家庄地铁四号线研究报告初稿》", "category": "科研任务", "hours": 6.5}, {"date": "2026.3.19", "location": "石家庄", "activity": "组会", "category": "科研任务", "hours": 0.5}, {"date": "2026.3.19", "location": "石家庄", "activity": "女友视频通话", "category": "生活事务", "hours": 1.5}, {"date": "2026.3.20", "location": "石家庄", "activity": "睡眠", "category": "睡眠与休息", "hours": 9.5}, {"date": "2026.3.20", "location": "石家庄", "activity": "和女友打羽毛球", "category": "运动", "hours": 2.0}, {"date": "2026.3.20", "location": "石家庄", "activity": "和女友看电影《拯救计划》", "category": "娱乐", "hours": 2.5}, {"date": "2026.3.21", "location": "石家庄", "activity": "睡眠", "category": "睡眠与休息", "hours": 9.0}, {"date": "2026.3.21", "location": "石家庄", "activity": "和女友及其朋友泡温泉 （西部长青温泉谷）", "category": "娱乐", "hours": 4.0}, {"date": "2026.3.21", "location": "石家庄", "activity": "和女友及其朋友打麻将", "category": "娱乐", "hours": 3.0}, {"date": "2026.3.22", "location": "石家庄", "activity": "睡眠", "category": "睡眠与休息", "hours": 9.0}, {"date": "2026.3.22", "location": "石家庄", "activity": "和女友及其朋友吃海底捞 玩密室逃脱《匣之女》", "category": "娱乐", "hours": 3.0}, {"date": "2026.3.22", "location": "石家庄", "activity": "和女友及其朋友打麻将", "category": "娱乐", "hours": 2.0}, {"date": "2026.3.22", "location": "石家庄", "activity": "和女友看美剧《DTF St. Louis》", "category": "娱乐", "hours": 2.0}, {"date": "2026.3.23", "location": "石家庄", "activity": "睡眠", "category": "睡眠与休息", "hours": 9.0}, {"date": "2026.3.23", "location": "石家庄", "activity": "优化、总结时间管理", "category": "兴趣学习", "hours": 0.5}, {"date": "2026.3.23", "location": "石家庄", "activity": "《石家庄地铁四号线研究报告初稿》", "category": "科研任务", "hours": 6.0}, {"date": "2026.3.23", "location": "石家庄", "activity": "手机麻将", "category": "娱乐", "hours": 1.5}, {"date": "2026.3.23", "location": "石家庄", "activity": "女友视频通话", "category": "生活事务", "hours": 1.0}, {"date": "2026.3.24", "location": "石家庄", "activity": "睡眠", "category": "睡眠与休息", "hours": 10.0}, {"date": "2026.3.24", "location": "石家庄", "activity": "健身房锻炼（爬坡0.5）", "category": "运动", "hours": 2.0}, {"date": "2026.3.24", "location": "石家庄", "activity": "《石家庄地铁四号线研究报告初稿》", "category": "科研任务", "hours": 2.75}, {"date": "2026.3.24", "location": "石家庄", "activity": "看抖音点赞", "category": "娱乐", "hours": 0.25}, {"date": "2026.3.24", "location": "石家庄", "activity": "和张江斌吃饭", "category": "生活事务", "hours": 1.0}, {"date": "2026.3.24", "location": "石家庄", "activity": "和张江斌打台球", "category": "娱乐", "hours": 1.0}, {"date": "2026.3.24", "location": "石家庄", "activity": "和张江斌打游戏", "category": "娱乐", "hours": 2.0}, {"date": "2026.3.24", "location": "石家庄", "activity": "女友视频通话", "category": "生活事务", "hours": 0.75}, {"date": "2026.3.25", "location": "石家庄", "activity": "睡眠", "category": "睡眠与休息", "hours": 9.0}, {"date": "2026.3.25", "location": "石家庄", "activity": "健身", "category": "运动", "hours": 1.0}, {"date": "2026.3.25", "location": "石家庄", "activity": "《石家庄地铁四号线研究报告初稿》", "category": "科研任务", "hours": 3.75}, {"date": "2026.3.25", "location": "石家庄", "activity": "和张江斌打游戏", "category": "娱乐", "hours": 3.0}, {"date": "2026.3.26", "location": "石家庄", "activity": "睡眠", "category": "睡眠与休息", "hours": 8.0}, {"date": "2026.3.26", "location": "石家庄", "activity": "《石家庄地铁四号线研究报告初稿》", "category": "科研任务", "hours": 4.0}, {"date": "2026.3.26", "location": "石家庄", "activity": "《硕士论文渗流试验方案》", "category": "科研任务", "hours": 1.75}, {"date": "2026.3.26", "location": "石家庄", "activity": "女友视频通话", "category": "生活事务", "hours": 1.0}, {"date": "2026.3.27", "location": "石家庄- 邢台 -石家庄", "activity": "睡眠", "category": "睡眠与休息", "hours": 8.5}, {"date": "2026.3.27", "location": "石家庄- 邢台 -石家庄", "activity": "陪女友练车", "category": "生活事务", "hours": 1.5}, {"date": "2026.3.27", "location": "石家庄- 邢台 -石家庄", "activity": "赶路", "category": "生活事务", "hours": 4.0}, {"date": "2026.3.27", "location": "石家庄- 邢台 -石家庄", "activity": "组会", "category": "科研任务", "hours": 2.5}, {"date": "2026.3.27", "location": "石家庄- 邢台 -石家庄", "activity": "整理汇报思路", "category": "科研任务", "hours": 0.5}, {"date": "2026.3.28", "location": "石家庄-邢台", "activity": "睡眠", "category": "睡眠与休息", "hours": 8.0}, {"date": "2026.3.28", "location": "石家庄-邢台", "activity": "回途阅读《原子习惯》", "category": "兴趣学习", "hours": 0.5}, {"date": "2026.3.28", "location": "石家庄-邢台", "activity": "和女友吃干锅鸡、陪女友练车", "category": "生活事务", "hours": 4.0}, {"date": "2026.3.28", "location": "石家庄-邢台", "activity": "看shunde yin文献", "category": "科研任务", "hours": 1.0}, {"date": "2026.3.28", "location": "石家庄-邢台", "activity": "和女友一起看《爱情公寓》", "category": "娱乐", "hours": 1.5}, {"date": "2026.3.28", "location": "石家庄-邢台", "activity": "和女友在八中街吃小吃", "category": "生活事务", "hours": 1.0}, {"date": "2026.3.29", "location": "邢台-石家庄", "activity": "睡眠", "category": "睡眠与休息", "hours": 8.5}, {"date": "2026.3.29", "location": "邢台-石家庄", "activity": "和女友看电影《河狸变身计划》", "category": "娱乐", "hours": 2.0}, {"date": "2026.3.29", "location": "邢台-石家庄", "activity": "和女友吃砂锅菜", "category": "生活事务", "hours": 1.0}, {"date": "2026.3.29", "location": "邢台-石家庄", "activity": "听shunde yin学术报告并交流", "category": "科研任务", "hours": 2.0}, {"date": "2026.3.29", "location": "邢台-石家庄", "activity": "女友视频通话", "category": "生活事务", "hours": 1.0}, {"date": "2026.3.29", "location": "邢台-石家庄", "activity": "阅读《原子习惯》", "category": "兴趣学习", "hours": 0.75}, {"date": "2026.3.30", "location": "石家庄", "activity": "睡眠", "category": "睡眠与休息", "hours": 8.5}, {"date": "2026.3.30", "location": "石家庄", "activity": "健身", "category": "运动", "hours": 1.25}, {"date": "2026.3.30", "location": "石家庄", "activity": "《石家庄地铁四号线研究报告初稿》", "category": "科研任务", "hours": 2.75}, {"date": "2026.3.30", "location": "石家庄", "activity": "女友视频通话", "category": "生活事务", "hours": 0.5}, {"date": "2026.3.30", "location": "石家庄", "activity": "优化时间管理", "category": "兴趣学习", "hours": 0.5}, {"date": "2026.3.30", "location": "石家庄", "activity": "阅读《原子习惯》", "category": "兴趣学习", "hours": 0.25}, {"date": "2026.3.30", "location": "石家庄", "activity": "阅读优衣库《LifeWear》杂志", "category": "兴趣学习", "hours": 0.75}, {"date": "2026.3.30", "location": "石家庄", "activity": "女友视频通话", "category": "生活事务", "hours": 1.5}, {"date": "2026.3.30", "location": "石家庄", "activity": "学日语", "category": "兴趣学习", "hours": 0.5}, {"date": "2026.3.30", "location": "石家庄", "activity": "看《深夜食堂》", "category": "娱乐", "hours": 0.75}, {"date": "2026.3.31", "location": "石家庄", "activity": "睡眠", "category": "睡眠与休息", "hours": 9.5}, {"date": "2026.3.31", "location": "石家庄", "activity": "帮宁志纬修改小论文", "category": "科研任务", "hours": 3.0}, {"date": "2026.3.31", "location": "石家庄", "activity": "优化时间管理", "category": "兴趣学习", "hours": 0.5}, {"date": "2026.3.31", "location": "石家庄", "activity": "办GPT plus", "category": "科研任务", "hours": 0.5}, {"date": "2026.3.31", "location": "石家庄", "activity": "报名CAES会议", "category": "科研任务", "hours": 0.5}, {"date": "2026.3.31", "location": "石家庄", "activity": "同导师询问实验设备、讨论方案", "category": "科研任务", "hours": 1.5}, {"date": "2026.3.31", "location": "石家庄", "activity": "整理讨论内容思路", "category": "科研任务", "hours": 0.25}, {"date": "2026.3.31", "location": "石家庄", "activity": "优化时间管理", "category": "兴趣学习", "hours": 1.0}, {"date": "2026.3.31", "location": "石家庄", "activity": "女友视频通话", "category": "生活事务", "hours": 1.0}, {"date": "2026.3.31", "location": "石家庄", "activity": "看《深夜食堂》", "category": "娱乐", "hours": 0.75}], "2026.4": [{"date": "2026.4.1", "location": "石家庄", "activity": "睡眠", "category": "睡眠与休息", "hours": 8.0}, {"date": "2026.4.1", "location": "石家庄", "activity": "个人形象", "category": "生活事务", "hours": 0.25}, {"date": "2026.4.1", "location": "石家庄", "activity": "调研试验方案", "category": "科研任务", "hours": 1.25}, {"date": "2026.4.1", "location": "石家庄", "activity": "调研试验方案", "category": "科研任务", "hours": 1.5}, {"date": "2026.4.1", "location": "石家庄", "activity": "学习羽毛球", "category": "兴趣学习", "hours": 0.5}, {"date": "2026.4.1", "location": "石家庄", "activity": "梳理试验思路", "category": "科研任务", "hours": 1.5}, {"date": "2026.4.1", "location": "石家庄", "activity": "《石家庄地铁四号线研究报告初稿》", "category": "科研任务", "hours": 3.0}, {"date": "2026.4.1", "location": "石家庄", "activity": "理发", "category": "生活事务", "hours": 0.5}, {"date": "2026.4.1", "location": "石家庄", "activity": "家人通话", "category": "生活事务", "hours": 1.0}, {"date": "2026.4.1", "location": "石家庄", "activity": "看《深夜食堂》", "category": "娱乐", "hours": 0.5}, {"date": "2026.4.2", "location": "石家庄", "activity": "睡眠", "category": "睡眠与休息", "hours": 9.0}, {"date": "2026.4.2", "location": "石家庄", "activity": "健身", "category": "运动", "hours": 1.5}, {"date": "2026.4.2", "location": "石家庄", "activity": "预实验", "category": "科研任务", "hours": 3.25}, {"date": "2026.4.2", "location": "石家庄", "activity": "日语学习", "category": "兴趣学习", "hours": 0.5}, {"date": "2026.4.2", "location": "石家庄", "activity": "梳理试验思路", "category": "科研任务", "hours": 1.25}, {"date": "2026.4.2", "location": "石家庄", "activity": "女友通话", "category": "生活事务", "hours": 1.5}, {"date": "2026.4.3", "location": "石家庄", "activity": "睡眠", "category": "睡眠与休息", "hours": 9.5}, {"date": "2026.4.3", "location": "石家庄", "activity": "梳理试验思路", "category": "科研任务", "hours": 2.0}, {"date": "2026.4.3", "location": "石家庄", "activity": "预实验", "category": "科研任务", "hours": 2.5}, {"date": "2026.4.3", "location": "石家庄", "activity": "和老师讨论试验方案", "category": "科研任务", "hours": 0.75}, {"date": "2026.4.3", "location": "石家庄", "activity": "网吧", "category": "娱乐", "hours": 4.0}, {"date": "2026.4.4", "location": "石家庄", "activity": "睡眠", "category": "睡眠与休息", "hours": 10.0}, {"date": "2026.4.4", "location": "石家庄", "activity": "汤泉（喜汤鲜果）", "category": "娱乐", "hours": 8.0}, {"date": "2026.4.4", "location": "石家庄", "activity": "女友通话", "category": "生活事务", "hours": 1.0}, {"date": "2026.4.4", "location": "石家庄", "activity": "看《虎胆龙威》", "category": "娱乐", "hours": 2.0}, {"date": "2026.4.5", "location": "石家庄", "activity": "睡眠", "category": "睡眠与休息", "hours": 9.0}, {"date": "2026.4.5", "location": "石家庄", "activity": "网吧", "category": "娱乐", "hours": 4.0}, {"date": "2026.4.5", "location": "石家庄", "activity": "看《你逃我也逃》", "category": "娱乐", "hours": 1.5}, {"date": "2026.4.5", "location": "石家庄", "activity": "女友通话", "category": "生活事务", "hours": 2.0}, {"date": "2026.4.6", "location": "石家庄", "activity": "睡眠", "category": "睡眠与休息", "hours": 11.0}, {"date": "2026.4.6", "location": "石家庄", "activity": "购买试块和模具", "category": "科研任务", "hours": 2.0}, {"date": "2026.4.6", "location": "石家庄", "activity": "网吧", "category": "娱乐", "hours": 4.0}, {"date": "2026.4.6", "location": "石家庄", "activity": "女友通话", "category": "生活事务", "hours": 1.5}, {"date": "2026.4.6", "location": "石家庄", "activity": "手游", "category": "娱乐", "hours": 1.5}, {"date": "2026.4.7", "location": "石家庄", "activity": "睡眠", "category": "睡眠与休息", "hours": 9.0}, {"date": "2026.4.7", "location": "石家庄", "activity": "健身", "category": "运动", "hours": 1.25}, {"date": "2026.4.7", "location": "石家庄", "activity": "梳理试验思路", "category": "科研任务", "hours": 0.5}, {"date": "2026.4.7", "location": "石家庄", "activity": "《石家庄地铁四号线研究报告初稿》", "category": "科研任务", "hours": 2.25}, {"date": "2026.4.7", "location": "石家庄", "activity": "试验制样", "category": "科研任务", "hours": 2.0}, {"date": "2026.4.7", "location": "石家庄", "activity": "女友通话", "category": "生活事务", "hours": 1.25}, {"date": "2026.4.7", "location": "石家庄", "activity": "看《潜伏》", "category": "娱乐", "hours": 1.25}, {"date": "2026.4.8", "location": "石家庄", "activity": "睡眠", "category": "睡眠与休息", "hours": 8.0}, {"date": "2026.4.8", "location": "石家庄", "activity": "健身", "category": "运动", "hours": 1.5}, {"date": "2026.4.8", "location": "石家庄", "activity": "《石家庄地铁四号线研究报告初稿》", "category": "科研任务", "hours": 1.0}, {"date": "2026.4.8", "location": "石家庄", "activity": "试验制样", "category": "科研任务", "hours": 2.0}, {"date": "2026.4.8", "location": "石家庄", "activity": "导师讨论", "category": "科研任务", "hours": 0.5}, {"date": "2026.4.8", "location": "石家庄", "activity": "女友通话", "category": "生活事务", "hours": 1.5}, {"date": "2026.4.8", "location": "石家庄", "activity": "看《潜伏》", "category": "娱乐", "hours": 4.0}, {"date": "2026.4.9", "location": "石家庄", "activity": "睡眠", "category": "睡眠与休息", "hours": 9.0}, {"date": "2026.4.9", "location": "石家庄", "activity": "买试验用品", "category": "科研任务", "hours": 1.0}, {"date": "2026.4.9", "location": "石家庄", "activity": "试验制样", "category": "科研任务", "hours": 4.75}, {"date": "2026.4.9", "location": "石家庄", "activity": "报名会议", "category": "科研任务", "hours": 0.5}, {"date": "2026.4.9", "location": "石家庄", "activity": "修改盐穴储气库综述", "category": "科研任务", "hours": 1.0}, {"date": "2026.4.9", "location": "石家庄", "activity": "女友通话", "category": "生活事务", "hours": 1.0}, {"date": "2026.4.9", "location": "石家庄", "activity": "看《潜伏》", "category": "娱乐", "hours": 1.75}, {"date": "2026.4.10", "location": "石家庄", "activity": "睡眠", "category": "睡眠与休息", "hours": 8.0}, {"date": "2026.4.10", "location": "石家庄", "activity": "试验制样", "category": "科研任务", "hours": 1.0}, {"date": "2026.4.10", "location": "石家庄", "activity": "修改盐穴储气库综述", "category": "科研任务", "hours": 2.25}, {"date": "2026.4.10", "location": "石家庄", "activity": "网吧", "category": "娱乐", "hours": 4.0}, {"date": "2026.4.10", "location": "石家庄", "activity": "女友通话", "category": "生活事务", "hours": 2.0}, {"date": "2026.4.11", "location": "石家庄", "activity": "睡眠", "category": "睡眠与休息", "hours": 9.5}, {"date": "2026.4.11", "location": "石家庄", "activity": "汤泉（喜汤鲜果）", "category": "娱乐", "hours": 7.0}, {"date": "2026.4.11", "location": "石家庄", "activity": "看《潜伏》", "category": "娱乐", "hours": 4.0}, {"date": "2026.4.11", "location": "石家庄", "activity": "游泳", "category": "运动", "hours": 0.5}, {"date": "2026.4.11", "location": "石家庄", "activity": "女友通话", "category": "生活事务", "hours": 1.0}, {"date": "2026.4.11", "location": "石家庄", "activity": "读《不要担心2小时后和8公里外的事》", "category": "兴趣学习", "hours": 0.75}, {"date": "2026.4.12", "location": "石家庄", "activity": "睡眠", "category": "睡眠与休息", "hours": 8.0}, {"date": "2026.4.12", "location": "石家庄", "activity": "组会", "category": "科研任务", "hours": 1.5}, {"date": "2026.4.12", "location": "石家庄", "activity": "修改盐穴储气库综述", "category": "科研任务", "hours": 4.0}, {"date": "2026.4.12", "location": "石家庄", "activity": "网吧", "category": "娱乐", "hours": 3.0}, {"date": "2026.4.12", "location": "石家庄", "activity": "女友通话", "category": "生活事务", "hours": 1.5}, {"date": "2026.4.12", "location": "石家庄", "activity": "看《潜伏》", "category": "娱乐", "hours": 2.0}, {"date": "2026.4.13", "location": "石家庄", "activity": "睡眠", "category": "睡眠与休息", "hours": 9.0}, {"date": "2026.4.13", "location": "石家庄", "activity": "修改盐穴储气库综述", "category": "科研任务", "hours": 2.5}, {"date": "2026.4.13", "location": "石家庄", "activity": "试验制样", "category": "科研任务", "hours": 1.0}, {"date": "2026.4.13", "location": "石家庄", "activity": "试验调研", "category": "科研任务", "hours": 2.75}, {"date": "2026.4.13", "location": "石家庄", "activity": "网吧", "category": "娱乐", "hours": 3.0}, {"date": "2026.4.13", "location": "石家庄", "activity": "女友通话", "category": "生活事务", "hours": 1.0}, {"date": "2026.4.14", "location": "石家庄", "activity": "睡眠", "category": "睡眠与休息", "hours": 9.5}, {"date": "2026.4.14", "location": "石家庄", "activity": "买试验用品", "category": "科研任务", "hours": 1.0}, {"date": "2026.4.14", "location": "石家庄", "activity": "修改盐穴储气库综述", "category": "科研任务", "hours": 4.5}, {"date": "2026.4.14", "location": "石家庄", "activity": "去社区医院看过敏", "category": "生活事务", "hours": 0.5}, {"date": "2026.4.14", "location": "石家庄", "activity": "看《安娜》", "category": "娱乐", "hours": 1.0}, {"date": "2026.4.14", "location": "石家庄", "activity": "女友通话", "category": "生活事务", "hours": 1.25}, {"date": "2026.4.15", "location": "石家庄", "activity": "睡眠", "category": "睡眠与休息", "hours": 8.0}, {"date": "2026.4.15", "location": "石家庄", "activity": "修改盐穴储气库综述", "category": "科研任务", "hours": 5.75}, {"date": "2026.4.15", "location": "石家庄", "activity": "挂号 去省四院看过敏", "category": "生活事务", "hours": 1.5}, {"date": "2026.4.15", "location": "石家庄", "activity": "看《安娜》", "category": "娱乐", "hours": 0.5}, {"date": "2026.4.15", "location": "石家庄", "activity": "看《假如我是真的》", "category": "娱乐", "hours": 0.75}, {"date": "2026.4.15", "location": "石家庄", "activity": "女友通话", "category": "生活事务", "hours": 1.0}, {"date": "2026.4.16", "location": "石家庄", "activity": "睡眠", "category": "睡眠与休息", "hours": 9.0}, {"date": "2026.4.16", "location": "石家庄", "activity": "修改盐穴储气库综述", "category": "科研任务", "hours": 2.25}, {"date": "2026.4.16", "location": "石家庄", "activity": "计算试验配比", "category": "科研任务", "hours": 0.5}, {"date": "2026.4.16", "location": "石家庄", "activity": "试验制样", "category": "科研任务", "hours": 2.0}, {"date": "2026.4.16", "location": "石家庄", "activity": "看《假如我是真的》", "category": "娱乐", "hours": 0.5}, {"date": "2026.4.16", "location": "石家庄", "activity": "女友通话", "category": "生活事务", "hours": 0.5}, {"date": "2026.4.16", "location": "石家庄", "activity": "cs", "category": "娱乐", "hours": 2.5}, {"date": "2026.4.17", "location": "石家庄", "activity": "睡眠", "category": "睡眠与休息", "hours": 7.0}, {"date": "2026.4.17", "location": "石家庄", "activity": "试验制样", "category": "科研任务", "hours": 4.75}, {"date": "2026.4.17", "location": "石家庄", "activity": "试验调研", "category": "科研任务", "hours": 2.5}, {"date": "2026.4.17", "location": "石家庄", "activity": "组会", "category": "科研任务", "hours": 2.5}, {"date": "2026.4.17", "location": "石家庄", "activity": "女友通话", "category": "生活事务", "hours": 1.0}, {"date": "2026.4.18", "location": "石家庄", "activity": "睡眠", "category": "睡眠与休息", "hours": 10.5}, {"date": "2026.4.18", "location": "石家庄", "activity": "读《不要担心2小时后和8公里外的事》", "category": "兴趣学习", "hours": 0.25}, {"date": "2026.4.18", "location": "石家庄", "activity": "看《安娜》", "category": "娱乐", "hours": 2.0}, {"date": "2026.4.18", "location": "石家庄", "activity": "看《釜山行》", "category": "娱乐", "hours": 2.0}, {"date": "2026.4.18", "location": "石家庄", "activity": "女友通话", "category": "生活事务", "hours": 0.75}, {"date": "2026.4.18", "location": "石家庄", "activity": "家人通话", "category": "生活事务", "hours": 1.75}, {"date": "2026.4.19", "location": "石家庄", "activity": "睡眠", "category": "睡眠与休息", "hours": 9.5}, {"date": "2026.4.19", "location": "石家庄", "activity": "修改简历", "category": "生活事务", "hours": 0.5}, {"date": "2026.4.19", "location": "石家庄", "activity": "读《不要担心2小时后和8公里外的事》", "category": "兴趣学习", "hours": 1.25}, {"date": "2026.4.19", "location": "石家庄", "activity": "试验账目", "category": "科研任务", "hours": 0.25}, {"date": "2026.4.19", "location": "石家庄", "activity": "调研提升围岩等级", "category": "科研任务", "hours": 1.0}, {"date": "2026.4.19", "location": "石家庄", "activity": "CS", "category": "娱乐", "hours": 2.0}, {"date": "2026.4.19", "location": "石家庄", "activity": "女友通话", "category": "生活事务", "hours": 1.25}, {"date": "2026.4.19", "location": "石家庄", "activity": "看《住宅区的两人》", "category": "娱乐", "hours": 0.75}, {"date": "2026.4.20", "location": "石家庄", "activity": "睡眠", "category": "睡眠与休息", "hours": 7.25}, {"date": "2026.4.20", "location": "石家庄", "activity": "挂号 去省四院看过敏", "category": "生活事务", "hours": 2.5}, {"date": "2026.4.20", "location": "石家庄", "activity": "读《不要担心2小时后和8公里外的事》", "category": "兴趣学习", "hours": 0.25}, {"date": "2026.4.20", "location": "石家庄", "activity": "cs", "category": "娱乐", "hours": 3.5}, {"date": "2026.4.20", "location": "石家庄", "activity": "试验制样", "category": "科研任务", "hours": 3.5}, {"date": "2026.4.20", "location": "石家庄", "activity": "导师讨论", "category": "科研任务", "hours": 0.75}, {"date": "2026.4.20", "location": "石家庄", "activity": "女友通话", "category": "生活事务", "hours": 1.0}, {"date": "2026.4.20", "location": "石家庄", "activity": "看《住宅区的两人》", "category": "娱乐", "hours": 0.5}, {"date": "2026.4.21", "location": "石家庄", "activity": "睡眠", "category": "睡眠与休息", "hours": 8.5}, {"date": "2026.4.21", "location": "石家庄", "activity": "导师整理规范任务", "category": "科研任务", "hours": 0.75}, {"date": "2026.4.21", "location": "石家庄", "activity": "cs", "category": "娱乐", "hours": 0.25}, {"date": "2026.4.21", "location": "石家庄", "activity": "读《不要担心2小时后和8公里外的事》", "category": "兴趣学习", "hours": 0.75}, {"date": "2026.4.21", "location": "石家庄", "activity": "整理医药费发票", "category": "生活事务", "hours": 0.25}, {"date": "2026.4.21", "location": "石家庄", "activity": "女友通话", "category": "生活事务", "hours": 2.0}, {"date": "2026.4.21", "location": "石家庄", "activity": "读《东京潮流地图》", "category": "兴趣学习", "hours": 1.0}, {"date": "2026.4.21", "location": "石家庄", "activity": "看《喋血双雄》", "category": "娱乐", "hours": 1.75}, {"date": "2026.4.22", "location": "石家庄-廊坊", "activity": "睡眠", "category": "睡眠与休息", "hours": 8.0}, {"date": "2026.4.22", "location": "石家庄-廊坊", "activity": "网吧", "category": "娱乐", "hours": 4.25}, {"date": "2026.4.22", "location": "石家庄-廊坊", "activity": "赶路", "category": "生活事务", "hours": 4.0}, {"date": "2026.4.22", "location": "石家庄-廊坊", "activity": "日语", "category": "兴趣学习", "hours": 0.5}, {"date": "2026.4.22", "location": "石家庄-廊坊", "activity": "女友通话", "category": "生活事务", "hours": 1.0}, {"date": "2026.4.23", "location": "廊坊", "activity": "睡眠", "category": "睡眠与休息", "hours": 7.75}, {"date": "2026.4.23", "location": "廊坊", "activity": "地下能源储存学术会议", "category": "科研任务", "hours": 8.0}, {"date": "2026.4.23", "location": "廊坊", "activity": "赶路", "category": "生活事务", "hours": 4.0}, {"date": "2026.4.23", "location": "廊坊", "activity": "女友通话", "category": "生活事务", "hours": 1.0}, {"date": "2026.4.23", "location": "廊坊", "activity": "日语", "category": "兴趣学习", "hours": 0.25}, {"date": "2026.4.24", "location": "石家庄-徐州", "activity": "睡眠", "category": "睡眠与休息", "hours": 7.75}, {"date": "2026.4.24", "location": "石家庄-徐州", "activity": "赶路", "category": "生活事务", "hours": 4.5}, {"date": "2026.4.24", "location": "石家庄-徐州", "activity": "读《不要担心2小时后和8公里外的事》", "category": "兴趣学习", "hours": 0.5}, {"date": "2026.4.24", "location": "石家庄-徐州", "activity": "网吧", "category": "娱乐", "hours": 3.0}, {"date": "2026.4.24", "location": "石家庄-徐州", "activity": "参观矿大实验室", "category": "科研任务", "hours": 1.5}, {"date": "2026.4.24", "location": "石家庄-徐州", "activity": "女友通话", "category": "生活事务", "hours": 0.5}, {"date": "2026.4.24", "location": "石家庄-徐州", "activity": "日语", "category": "兴趣学习", "hours": 0.25}, {"date": "2026.4.25", "location": "徐州", "activity": "睡眠", "category": "睡眠与休息", "hours": 8.0}, {"date": "2026.4.25", "location": "徐州", "activity": "矿山建设学术会议", "category": "科研任务", "hours": 7.0}, {"date": "2026.4.25", "location": "徐州", "activity": "读《不要担心2小时后和8公里外的事》", "category": "兴趣学习", "hours": 0.5}, {"date": "2026.4.25", "location": "徐州", "activity": "网吧", "category": "娱乐", "hours": 3.0}, {"date": "2026.4.25", "location": "徐州", "activity": "女友通话", "category": "生活事务", "hours": 0.75}, {"date": "2026.4.25", "location": "徐州", "activity": "整理时间管理", "category": "兴趣学习", "hours": 0.5}, {"date": "2026.4.26", "location": "徐州-石家庄", "activity": "睡眠", "category": "睡眠与休息", "hours": 7.0}, {"date": "2026.4.26", "location": "徐州-石家庄", "activity": "矿山建设学术会议", "category": "科研任务", "hours": 3.0}, {"date": "2026.4.26", "location": "徐州-石家庄", "activity": "游览云龙湖", "category": "娱乐", "hours": 0.75}, {"date": "2026.4.26", "location": "徐州-石家庄", "activity": "网吧", "category": "娱乐", "hours": 4.0}, {"date": "2026.4.26", "location": "徐州-石家庄", "activity": "赶路", "category": "生活事务", "hours": 4.0}, {"date": "2026.4.26", "location": "徐州-石家庄", "activity": "读《不要担心2小时后和8公里外的事》", "category": "兴趣学习", "hours": 0.25}, {"date": "2026.4.27", "location": "石家庄", "activity": "睡眠", "category": "睡眠与休息", "hours": 8.5}, {"date": "2026.4.27", "location": "石家庄", "activity": "整理报销", "category": "科研任务", "hours": 0.75}, {"date": "2026.4.27", "location": "石家庄", "activity": "试验制样", "category": "科研任务", "hours": 2.5}, {"date": "2026.4.27", "location": "石家庄", "activity": "整理会议照片", "category": "科研任务", "hours": 0.25}, {"date": "2026.4.27", "location": "石家庄", "activity": "导师讨论", "category": "科研任务", "hours": 0.25}, {"date": "2026.4.27", "location": "石家庄", "activity": "女友通话", "category": "生活事务", "hours": 1.25}, {"date": "2026.4.27", "location": "石家庄", "activity": "读《人生不怕从头再来》", "category": "兴趣学习", "hours": 0.5}, {"date": "2026.4.28", "location": "石家庄", "activity": "睡眠", "category": "睡眠与休息", "hours": 7.25}, {"date": "2026.4.28", "location": "石家庄", "activity": "读《人生不怕从头再来》", "category": "兴趣学习", "hours": 1.0}, {"date": "2026.4.28", "location": "石家庄", "activity": "试验调研", "category": "科研任务", "hours": 1.25}, {"date": "2026.4.28", "location": "石家庄", "activity": "渗透率试验", "category": "科研任务", "hours": 3.0}, {"date": "2026.4.28", "location": "石家庄", "activity": "组会", "category": "科研任务", "hours": 2.0}, {"date": "2026.4.28", "location": "石家庄", "activity": "师兄聊天", "category": "科研任务", "hours": 1.5}, {"date": "2026.4.29", "location": "石家庄", "activity": "睡眠", "category": "睡眠与休息", "hours": 7.25}, {"date": "2026.4.29", "location": "石家庄", "activity": "买试验用品", "category": "科研任务", "hours": 2.5}, {"date": "2026.4.29", "location": "石家庄", "activity": "读《人生不怕从头再来》", "category": "兴趣学习", "hours": 0.5}, {"date": "2026.4.29", "location": "石家庄", "activity": "日记", "category": "兴趣学习", "hours": 0.75}, {"date": "2026.4.29", "location": "石家庄", "activity": "cs", "category": "娱乐", "hours": 0.5}, {"date": "2026.4.29", "location": "石家庄", "activity": "乒乓球", "category": "运动", "hours": 1.0}, {"date": "2026.4.29", "location": "石家庄", "activity": "台球", "category": "娱乐", "hours": 2.0}, {"date": "2026.4.29", "location": "石家庄", "activity": "女友通话", "category": "生活事务", "hours": 1.25}, {"date": "2026.4.30", "location": "石家庄-邢台", "activity": "睡眠", "category": "睡眠与休息", "hours": 9.5}, {"date": "2026.4.30", "location": "石家庄-邢台", "activity": "看《穿Prada的女王2》", "category": "娱乐", "hours": 2.0}, {"date": "2026.4.30", "location": "石家庄-邢台", "activity": "台球", "category": "娱乐", "hours": 1.0}, {"date": "2026.4.30", "location": "石家庄-邢台", "activity": "女友通话", "category": "生活事务", "hours": 1.0}], "2026.5": [{"date": "2026.5.1", "location": "邢台", "activity": "睡眠", "category": "睡眠与休息", "hours": 8.0}, {"date": "2026.5.1", "location": "邢台", "activity": "和女友打羽毛球", "category": "运动", "hours": 2.0}, {"date": "2026.5.1", "location": "邢台", "activity": "看《夺命许愿》", "category": "娱乐", "hours": 1.5}, {"date": "2026.5.1", "location": "邢台", "activity": "麻将", "category": "娱乐", "hours": 2.0}, {"date": "2026.5.2", "location": "邢台", "activity": "睡眠", "category": "睡眠与休息", "hours": 9.5}, {"date": "2026.5.2", "location": "邢台", "activity": "和沐汤泉", "category": "娱乐", "hours": 5.0}, {"date": "2026.5.2", "location": "邢台", "activity": "看《消失的人》", "category": "娱乐", "hours": 2.5}, {"date": "2026.5.3", "location": "邢台", "activity": "睡眠", "category": "睡眠与休息", "hours": 8.0}, {"date": "2026.5.3", "location": "邢台", "activity": "和女友及妹妹打羽毛球", "category": "运动", "hours": 2.0}, {"date": "2026.5.3", "location": "邢台", "activity": "买风筝", "category": "生活事务", "hours": 0.5}, {"date": "2026.5.3", "location": "邢台", "activity": "七里河野餐桌游放风筝", "category": "娱乐", "hours": 4.5}, {"date": "2026.5.3", "location": "邢台", "activity": "麻将", "category": "娱乐", "hours": 2.0}, {"date": "2026.5.4", "location": "邢台-邯郸-邢台", "activity": "睡眠", "category": "睡眠与休息", "hours": 8.5}, {"date": "2026.5.4", "location": "邢台-邯郸-邢台", "activity": "美乐城", "category": "娱乐", "hours": 4.0}, {"date": "2026.5.4", "location": "邢台-邯郸-邢台", "activity": "春山room咖啡馆", "category": "娱乐", "hours": 2.0}, {"date": "2026.5.4", "location": "邢台-邯郸-邢台", "activity": "看《夺命许愿》", "category": "娱乐", "hours": 2.5}, {"date": "2026.5.5", "location": "邢台", "activity": "睡眠", "category": "睡眠与休息", "hours": 9.5}, {"date": "2026.5.5", "location": "邢台", "activity": "玩switch", "category": "娱乐", "hours": 4.0}, {"date": "2026.5.5", "location": "邢台", "activity": "密室逃脱", "category": "生活事务", "hours": 1.0}, {"date": "2026.5.5", "location": "邢台", "activity": "读《莫泊桑小说集》", "category": "兴趣学习", "hours": 1.0}, {"date": "2026.5.6", "location": "邢台-石家庄", "activity": "睡眠", "category": "睡眠与休息", "hours": 8.0}, {"date": "2026.5.6", "location": "邢台-石家庄", "activity": "读《莫泊桑小说集》", "category": "兴趣学习", "hours": 0.75}, {"date": "2026.5.6", "location": "邢台-石家庄", "activity": "拿实验器材", "category": "科研任务", "hours": 0.5}, {"date": "2026.5.6", "location": "邢台-石家庄", "activity": "cs", "category": "娱乐", "hours": 3.0}, {"date": "2026.5.6", "location": "邢台-石家庄", "activity": "日记", "category": "生活事务", "hours": 0.5}, {"date": "2026.5.6", "location": "邢台-石家庄", "activity": "女友通话", "category": "生活事务", "hours": 1.0}, {"date": "2026.5.7", "location": "石家庄", "activity": "睡眠", "category": "睡眠与休息", "hours": 9.0}, {"date": "2026.5.7", "location": "石家庄", "activity": "试验", "category": "科研任务", "hours": 2.0}, {"date": "2026.5.7", "location": "石家庄", "activity": "看《喜鹊谋杀案》", "category": "娱乐", "hours": 2.0}, {"date": "2026.5.7", "location": "石家庄", "activity": "和女友去裕华万达", "category": "娱乐", "hours": 3.0}, {"date": "2026.5.8", "location": "石家庄", "activity": "睡眠", "category": "睡眠与休息", "hours": 10.0}, {"date": "2026.5.8", "location": "石家庄", "activity": "和女友去喜汤鲜果", "category": "娱乐", "hours": 7.0}, {"date": "2026.5.8", "location": "石家庄", "activity": "短视频", "category": "娱乐", "hours": 2.0}, {"date": "2026.5.9", "location": "石家庄", "activity": "睡眠", "category": "睡眠与休息", "hours": 9.0}, {"date": "2026.5.9", "location": "石家庄", "activity": "cs", "category": "娱乐", "hours": 6.0}, {"date": "2026.5.9", "location": "石家庄", "activity": "女友通话", "category": "生活事务", "hours": 1.75}, {"date": "2026.5.10", "location": "石家庄", "activity": "睡眠", "category": "睡眠与休息", "hours": 9.0}, {"date": "2026.5.10", "location": "石家庄", "activity": "cs", "category": "娱乐", "hours": 6.0}, {"date": "2026.5.10", "location": "石家庄", "activity": "女友通话", "category": "生活事务", "hours": 1.0}, {"date": "2026.5.11", "location": "石家庄", "activity": "睡眠", "category": "睡眠与休息", "hours": 9.0}, {"date": "2026.5.11", "location": "石家庄", "activity": "cs", "category": "娱乐", "hours": 6.0}, {"date": "2026.5.11", "location": "石家庄", "activity": "试验", "category": "科研任务", "hours": 2.0}, {"date": "2026.5.11", "location": "石家庄", "activity": "女友通话", "category": "生活事务", "hours": 2.0}, {"date": "2026.5.12", "location": "石家庄", "activity": "睡眠", "category": "睡眠与休息", "hours": 10.0}, {"date": "2026.5.12", "location": "石家庄", "activity": "试验调研", "category": "科研任务", "hours": 0.75}, {"date": "2026.5.12", "location": "石家庄", "activity": "试验制样", "category": "科研任务", "hours": 1.5}, {"date": "2026.5.12", "location": "石家庄", "activity": "导师讨论", "category": "科研任务", "hours": 0.5}, {"date": "2026.5.12", "location": "石家庄", "activity": "女友通话", "category": "生活事务", "hours": 1.0}, {"date": "2026.5.12", "location": "石家庄", "activity": "cs", "category": "娱乐", "hours": 3.0}, {"date": "2026.5.12", "location": "石家庄", "activity": "试验仪器调研", "category": "科研任务", "hours": 0.5}, {"date": "2026.5.13", "location": "石家庄", "activity": "睡眠", "category": "睡眠与休息", "hours": 9.5}, {"date": "2026.5.13", "location": "石家庄", "activity": "《石家庄地铁四号线研究报告初稿》", "category": "科研任务", "hours": 4.5}, {"date": "2026.5.13", "location": "石家庄", "activity": "试验仪器调研", "category": "科研任务", "hours": 0.5}, {"date": "2026.5.13", "location": "石家庄", "activity": "组会", "category": "科研任务", "hours": 2.5}, {"date": "2026.5.13", "location": "石家庄", "activity": "女友通话", "category": "生活事务", "hours": 2.75}, {"date": "2026.5.14", "location": "石家庄", "activity": "睡眠", "category": "睡眠与休息", "hours": 8.5}, {"date": "2026.5.14", "location": "石家庄", "activity": "cs", "category": "娱乐", "hours": 2.5}, {"date": "2026.5.14", "location": "石家庄", "activity": "羽毛球", "category": "运动", "hours": 3.0}, {"date": "2026.5.14", "location": "石家庄", "activity": "女友通话", "category": "生活事务", "hours": 1.0}, {"date": "2026.5.15", "location": "石家庄", "activity": "睡眠", "category": "睡眠与休息", "hours": 10.0}, {"date": "2026.5.15", "location": "石家庄", "activity": "杂活", "category": "科研任务", "hours": 0.75}, {"date": "2026.5.15", "location": "石家庄", "activity": "试验调研", "category": "科研任务", "hours": 1.5}, {"date": "2026.5.15", "location": "石家庄", "activity": "听报告", "category": "科研任务", "hours": 1.0}, {"date": "2026.5.15", "location": "石家庄", "activity": "cs", "category": "娱乐", "hours": 2.5}, {"date": "2026.5.15", "location": "石家庄", "activity": "女友通话", "category": "生活事务", "hours": 1.5}, {"date": "2026.5.16", "location": "石家庄", "activity": "睡眠", "category": "睡眠与休息", "hours": 10.0}, {"date": "2026.5.16", "location": "石家庄", "activity": "《石家庄地铁四号线研究报告初稿》", "category": "科研任务", "hours": 3.0}, {"date": "2026.5.16", "location": "石家庄", "activity": "cs", "category": "娱乐", "hours": 3.0}, {"date": "2026.5.16", "location": "石家庄", "activity": "女友通话", "category": "生活事务", "hours": 1.0}, {"date": "2026.5.17", "location": "石家庄", "activity": "睡眠", "category": "睡眠与休息", "hours": 10.5}, {"date": "2026.5.17", "location": "石家庄", "activity": "cs", "category": "娱乐", "hours": 4.0}, {"date": "2026.5.17", "location": "石家庄", "activity": "《石家庄地铁四号线研究报告初稿》", "category": "科研任务", "hours": 2.0}, {"date": "2026.5.17", "location": "石家庄", "activity": "看cs比赛", "category": "娱乐", "hours": 2.0}, {"date": "2026.5.17", "location": "石家庄", "activity": "女友通话", "category": "生活事务", "hours": 1.0}, {"date": "2026.5.17", "location": "石家庄", "activity": "看《壮志凌云》", "category": "娱乐", "hours": 1.5}, {"date": "2026.5.18", "location": "石家庄", "activity": "睡眠", "category": "睡眠与休息", "hours": 10.5}, {"date": "2026.5.18", "location": "石家庄", "activity": "女友送我520礼物", "category": "生活事务", "hours": 0.5}, {"date": "2026.5.18", "location": "石家庄", "activity": "《石家庄地铁四号线研究报告初稿》", "category": "科研任务", "hours": 3.0}, {"date": "2026.5.18", "location": "石家庄", "activity": "和蒋哥打乒乓球", "category": "运动", "hours": 1.0}, {"date": "2026.5.18", "location": "石家庄", "activity": "和蒋哥出去吃饭", "category": "生活事务", "hours": 2.0}, {"date": "2026.5.18", "location": "石家庄", "activity": "女友通话", "category": "生活事务", "hours": 1.0}, {"date": "2026.5.19", "location": "石家庄", "activity": "睡眠", "category": "睡眠与休息", "hours": 9.0}, {"date": "2026.5.19", "location": "石家庄", "activity": "《石家庄地铁四号线研究报告初稿》", "category": "科研任务", "hours": 2.25}, {"date": "2026.5.19", "location": "石家庄", "activity": "看《最后的假期》", "category": "娱乐", "hours": 1.75}, {"date": "2026.5.19", "location": "石家庄", "activity": "和师兄出去吃饭", "category": "生活事务", "hours": 2.0}, {"date": "2026.5.19", "location": "石家庄", "activity": "女友通话", "category": "生活事务", "hours": 2.0}, {"date": "2026.5.20", "location": "石家庄", "activity": "睡眠", "category": "睡眠与休息", "hours": 9.0}, {"date": "2026.5.20", "location": "石家庄", "activity": "《石家庄地铁四号线研究报告初稿》", "category": "科研任务", "hours": 2.0}, {"date": "2026.5.20", "location": "石家庄", "activity": "cs", "category": "娱乐", "hours": 3.0}, {"date": "2026.5.20", "location": "石家庄", "activity": "实验调研", "category": "科研任务", "hours": 1.0}, {"date": "2026.5.20", "location": "石家庄", "activity": "女友通话", "category": "生活事务", "hours": 1.75}, {"date": "2026.5.21", "location": "石家庄", "activity": "睡眠", "category": "睡眠与休息", "hours": 7.5}, {"date": "2026.5.21", "location": "石家庄", "activity": "补办身份证", "category": "生活事务", "hours": 0.5}, {"date": "2026.5.21", "location": "石家庄", "activity": "和蒋哥打乒乓球", "category": "运动", "hours": 2.0}, {"date": "2026.5.21", "location": "石家庄", "activity": "试验调研", "category": "科研任务", "hours": 0.5}, {"date": "2026.5.21", "location": "石家庄", "activity": "女友通话", "category": "生活事务", "hours": 2.0}, {"date": "2026.5.22", "location": "石家庄", "activity": "睡眠", "category": "睡眠与休息", "hours": 10.0}, {"date": "2026.5.22", "location": "石家庄", "activity": "羽毛球", "category": "运动", "hours": 3.0}, {"date": "2026.5.22", "location": "石家庄", "activity": "看《绝命毒师》", "category": "娱乐", "hours": 3.0}, {"date": "2026.5.22", "location": "石家庄", "activity": "女友通话", "category": "生活事务", "hours": 2.0}, {"date": "2026.5.23", "location": "石家庄", "activity": "睡眠", "category": "睡眠与休息", "hours": 8.0}, {"date": "2026.5.23", "location": "石家庄", "activity": "《石家庄地铁四号线研究报告初稿》", "category": "科研任务", "hours": 3.25}, {"date": "2026.5.23", "location": "石家庄", "activity": "和舅舅、表哥烤串", "category": "生活事务", "hours": 4.0}, {"date": "2026.5.23", "location": "石家庄", "activity": "女友通话", "category": "生活事务", "hours": 2.0}, {"date": "2026.5.23", "location": "石家庄", "activity": "看《绝命毒师》", "category": "娱乐", "hours": 3.0}, {"date": "2026.5.24", "location": "石家庄", "activity": "睡眠", "category": "睡眠与休息", "hours": 9.0}, {"date": "2026.5.24", "location": "石家庄", "activity": "看《绝命毒师》", "category": "娱乐", "hours": 4.0}, {"date": "2026.5.24", "location": "石家庄", "activity": "整理发票", "category": "科研任务", "hours": 0.75}, {"date": "2026.5.24", "location": "石家庄", "activity": "《石家庄地铁四号线研究报告初稿》", "category": "科研任务", "hours": 1.0}, {"date": "2026.5.24", "location": "石家庄", "activity": "试验制样", "category": "科研任务", "hours": 1.75}, {"date": "2026.5.24", "location": "石家庄", "activity": "女友通话", "category": "生活事务", "hours": 1.25}, {"date": "2026.5.24", "location": "石家庄", "activity": "玩数独", "category": "娱乐", "hours": 1.5}, {"date": "2026.5.25", "location": "石家庄", "activity": "睡眠", "category": "睡眠与休息", "hours": 7.0}, {"date": "2026.5.25", "location": "石家庄", "activity": "整理发票", "category": "科研任务", "hours": 0.25}, {"date": "2026.5.25", "location": "石家庄", "activity": "《石家庄地铁四号线研究报告初稿》", "category": "科研任务", "hours": 4.25}, {"date": "2026.5.25", "location": "石家庄", "activity": "试验制样", "category": "科研任务", "hours": 1.5}, {"date": "2026.5.25", "location": "石家庄", "activity": "看《绝命毒师》", "category": "娱乐", "hours": 2.0}, {"date": "2026.5.25", "location": "石家庄", "activity": "女友通话", "category": "生活事务", "hours": 1.25}, {"date": "2026.5.26", "location": "石家庄", "activity": "睡眠", "category": "睡眠与休息", "hours": 9.0}, {"date": "2026.5.26", "location": "石家庄", "activity": "优化时间管理", "category": "兴趣学习", "hours": 0.25}, {"date": "2026.5.26", "location": "石家庄", "activity": "实验调研", "category": "科研任务", "hours": 0.5}]}, "matrix": [{"urgency": "重要且紧急", "importance": "", "task": "《石家庄地铁四号线研究报告初稿》", "details": "1.整理出小论文投EI会议\n需修改的地方", "deadline": "6.30截至", "notes": ""}, {"urgency": "重要且紧急", "importance": "", "task": "《硕士论文渗流试验方案》", "details": "7.学习COMSOL，倒推需要哪些参数（T-H-M耦合），找案例教学", "deadline": "1.实验仪器MTS（1.牛庆合 2.安全学院 3.国重高新强 4.外部机构）\n4.循环温度的图表", "notes": "砂纸\n保鲜膜"}, {"urgency": "重要不紧急", "importance": "", "task": "短视频脚本", "details": "", "deadline": "", "notes": ""}, {"urgency": "重要不紧急", "importance": "", "task": "小红书发帖招生", "details": "", "deadline": "", "notes": ""}, {"urgency": "重要不紧急", "importance": "", "task": "面试英语教师", "details": "1.准备面试内容\n2.约面试时间", "deadline": "", "notes": ""}], "entertainment": []};
+const CAT_COLORS = {
+  '睡眠与休息': '#8b5cf6', '科研任务': '#4f46e5', '娱乐': '#f59e0b',
+  '生活事务': '#10b981', '兴趣学习': '#3b82f6', '运动': '#ef4444'
+};
+const CAT_ICONS = {
+  '睡眠与休息': '🌙', '科研任务': '🔬', '娱乐': '🎮',
+  '生活事务': '💬', '兴趣学习': '📚', '运动': '🏃'
+};
+
+function cmpDate(a, b) {
+  const pa = a.split('.').map(Number), pb = b.split('.').map(Number);
+  for (let i = 0; i < 3; i++) { if (pa[i] !== pb[i]) return pa[i] - pb[i]; }
+  return 0;
+}
+function loadData() {
+  const key = r => [r.date, r.activity, r.category].join('|');
+  const merged = new Map();
+  for (const m of Object.keys(EMBEDDED_DATA.months)) {
+    for (const r of EMBEDDED_DATA.months[m]) {
+      if (r.date) merged.set(key(r), { ...r });
+    }
+  }
+  const saved = JSON.parse(localStorage.getItem('lyu_records') || '[]');
+  const deleted = new Set(), overrides = new Map();
+  for (const r of saved) {
+    if (r._deleted) { deleted.add(r._deleted); continue; }
+    if (r._overrides) { overrides.set(r._overrides, r); continue; }
+    merged.set(key(r), { date: r.date, location: r.location, activity: r.activity, category: r.category, hours: r.hours });
+  }
+  for (const [oldKey, r] of overrides) {
+    const k = key(r);
+    if (oldKey !== k) merged.delete(oldKey);
+    merged.set(k, { date: r.date, location: r.location, activity: r.activity, category: r.category, hours: r.hours });
+  }
+  for (const d of deleted) merged.delete(d);
+  return [...merged.values()].sort((a, b) => -cmpDate(a.date, b.date));
+}
+
+function getAllRecords() { return loadData(); }
+
+function getMonthlyRecords() {
+  const records = getAllRecords();
+  const months = {};
+  for (const r of records) {
+    const m = r.date.split('.').slice(0, 2).join('.');
+    if (!months[m]) months[m] = [];
+    months[m].push(r);
+  }
+  return months;
+}
+
+function formatHours(h) {
+  const hrs = Math.floor(h);
+  const mins = Math.round((h - hrs) * 60);
+  return mins > 0 ? `${hrs}h${mins}m` : `${hrs}h`;
+}
+
+// ===== NAVIGATION =====
+let currentPage = 'dashboard';
+let charts = {};
+
+document.querySelectorAll('.sidebar-nav a').forEach(link => {
+  link.addEventListener('click', () => {
+    document.querySelectorAll('.sidebar-nav a').forEach(l => l.classList.remove('active'));
+    link.classList.add('active');
+    const page = link.dataset.page;
+    if (page !== currentPage) {
+      currentPage = page;
+      destroyCharts();
+      renderPage(page);
+    }
+  });
+});
+
+function destroyCharts() {
+  for (const key of Object.keys(charts)) {
+    if (charts[key]) { charts[key].destroy(); delete charts[key]; }
+  }
+}
+
+function renderPage(page) {
+  const main = document.getElementById('main-content');
+  switch (page) {
+    case 'dashboard': renderDashboard(main); break;
+    case 'records': renderRecords(main); break;
+    case 'categories': renderCategories(main); break;
+    case 'monthly': renderMonthly(main); break;
+    case 'matrix': renderMatrix(main); break;
+  }
+}
+
+// ===== DASHBOARD =====
+function renderDashboard(main) {
+  const records = getAllRecords();
+  const months = getMonthlyRecords();
+  const monthKeys = Object.keys(months).sort(cmpDate);
+  const latestMonth = monthKeys[monthKeys.length - 1] || '';
+  const latestRecords = months[latestMonth] || [];
+
+  const totalHours = records.reduce((s, r) => s + r.hours, 0);
+  const totalDays = new Set(records.map(r => r.date)).size;
+  const dailyAvg = totalDays > 0 ? totalHours / totalDays : 0;
+  const categories = [...new Set(records.map(r => r.category))];
+
+  // Category summary for latest month
+  const catSummary = {};
+  for (const r of latestRecords) {
+    catSummary[r.category] = (catSummary[r.category] || 0) + r.hours;
+  }
+  const latestTotal = latestRecords.reduce((s, r) => s + r.hours, 0);
+
+  main.innerHTML = `
+    <h2>📊 时间总览</h2>
+    <div class="stats-row">
+      <div class="stat-card">
+        <div class="label">总记录天数</div>
+        <div class="value">${totalDays}</div>
+        <div class="sub">共 ${records.length} 条记录</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">总记录时间</div>
+        <div class="value">${Math.round(totalHours)}h</div>
+        <div class="sub">约 ${Math.round(totalHours/24)} 天</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">日均记录</div>
+        <div class="value">${dailyAvg.toFixed(1)}h</div>
+        <div class="sub">最近月份: ${latestMonth}</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">活动类别</div>
+        <div class="value">${categories.length}</div>
+        <div class="sub">${categories.join('、')}</div>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap;">
+      <button class="btn btn-outline" onclick="exportCSV()">📥 导出记录CSV</button>
+      <button class="btn btn-outline" onclick="exportJSON()">📥 导出记录JSON</button>
+      <button class="btn btn-outline" onclick="exportSummaryCSV()">📊 导出月度汇总CSV</button>
+    </div>
+
+    <div class="charts-row">
+      <div class="chart-card">
+        <h3>📈 每日时间趋势（近30天）</h3>
+        <div class="chart-wrap"><canvas id="chart-daily-trend"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <h3>🍩 时间分类占比（${latestMonth}）</h3>
+        <div class="chart-wrap"><canvas id="chart-category-pie"></canvas></div>
+      </div>
+    </div>
+
+    <div class="charts-row">
+      <div class="chart-card full">
+        <h3>📅 每日时间分布（近30天，堆叠柱状图）</h3>
+        <div class="chart-wrap tall"><canvas id="chart-daily-stack"></canvas></div>
+      </div>
+    </div>
+  `;
+
+  // Daily trend chart
+  const last30 = [];
+  const allDates = [...new Set(records.map(r => r.date))].sort(cmpDate);
+  const recent30 = allDates.slice(-30);
+  for (const d of recent30) {
+    const dayRecords = records.filter(r => r.date === d);
+    last30.push({ date: d, total: dayRecords.reduce((s, r) => s + r.hours, 0) });
+  }
+  const ctx1 = document.getElementById('chart-daily-trend').getContext('2d');
+  charts['daily-trend'] = new Chart(ctx1, {
+    type: 'line',
+    data: {
+      labels: last30.map(d => d.date.slice(5)),
+      datasets: [{
+        label: '每日总时间 (h)', data: last30.map(d => d.total),
+        borderColor: '#4f46e5', backgroundColor: 'rgba(79,70,229,.1)',
+        fill: true, tension: .3, pointRadius: 2, pointHoverRadius: 5
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: { y: { beginAtZero: false, title: { display: true, text: '小时' } } }
+    }
+  });
+
+  // Pie chart
+  const pieLabels = Object.keys(catSummary);
+  const pieData = Object.values(catSummary);
+  const pieColors = pieLabels.map(c => CAT_COLORS[c] || '#9ca3af');
+  const ctx2 = document.getElementById('chart-category-pie').getContext('2d');
+  charts['category-pie'] = new Chart(ctx2, {
+    type: 'doughnut',
+    data: {
+      labels: pieLabels,
+      datasets: [{ data: pieData, backgroundColor: pieColors, borderWidth: 2, borderColor: '#fff' }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'bottom', labels: { padding: 16, usePointStyle: true } },
+        datalabels: {
+          color: '#fff', font: { weight: 'bold', size: 13 },
+          formatter: (v, ctx) => { const sum = ctx.dataset.data.reduce((a,b)=>a+b,0); const pct = sum>0 ? Math.round(v/sum*100) : 0; return pct >= 5 ? pct + '%' : ''; }
+        }
+      }
+    }
+  });
+
+  // Stacked bar
+  const stackDates = recent30.map(d => d.slice(5));
+  const stackCats = [...new Set(records.map(r => r.category))];
+  const datasets = stackCats.map(cat => ({
+    label: cat,
+    data: recent30.map(d => records.filter(r => r.date === d && r.category === cat).reduce((s, r) => s + r.hours, 0)),
+    backgroundColor: CAT_COLORS[cat] || '#9ca3af'
+  }));
+  const ctx3 = document.getElementById('chart-daily-stack').getContext('2d');
+  charts['daily-stack'] = new Chart(ctx3, {
+    type: 'bar',
+    data: { labels: stackDates, datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: 'bottom', labels: { padding: 12, usePointStyle: true, boxWidth: 10 } } },
+      scales: { x: { stacked: true, ticks: { maxRotation: 45, font: { size: 10 } } }, y: { stacked: true, title: { display: true, text: '小时' } } }
+    }
+  });
+}
+
+// ===== RECORDS =====
+function renderRecords(main) {
+  const records = getAllRecords();
+  const categories = [...new Set(records.map(r => r.category))];
+  const dates = [...new Set(records.map(r => r.date))].sort().reverse();
+
+  main.innerHTML = `
+    <h2>📋 每日记录</h2>
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:20px;">
+      <div class="filters">
+        <select id="filter-month"><option value="">全部月份</option>${[...new Set(records.map(r => r.date.split('.').slice(0,2).join('.')))].sort(cmpDate).reverse().map(m => `<option value="${m}">${m}</option>`).join('')}</select>
+        <select id="filter-category"><option value="">全部分类</option>${categories.map(c => `<option value="${c}">${c}</option>`).join('')}</select>
+        <input type="text" id="filter-search" placeholder="搜索活动..." style="width:180px;">
+      </div>
+      <button class="btn btn-primary" onclick="showAddModal()">+ 添加记录</button>
+      <button class="btn btn-outline" onclick="exportCSV()" title="导出所有记录为CSV（可用Excel打开）">📥 CSV</button>
+      <button class="btn btn-outline" onclick="exportJSON()" title="导出所有记录为JSON">📥 JSON</button>
+    </div>
+    <div id="records-list"></div>
+  `;
+
+  let _groupedCache = {};
+
+  function renderTable() {
+    const m = document.getElementById('filter-month').value;
+    const c = document.getElementById('filter-category').value;
+    const s = document.getElementById('filter-search').value.toLowerCase();
+    let filtered = records;
+    if (m) filtered = filtered.filter(r => r.date.startsWith(m + '.'));
+    if (c) filtered = filtered.filter(r => r.category === c);
+    if (s) filtered = filtered.filter(r => r.activity.toLowerCase().includes(s) || r.location.toLowerCase().includes(s));
+
+    const grouped = {};
+    for (const r of filtered) {
+      if (!grouped[r.date]) grouped[r.date] = [];
+      grouped[r.date].push(r);
+    }
+    // Sort items within each date group by activity for consistent indexing
+    for (const d of Object.keys(grouped)) {
+      grouped[d].sort((a, b) => a.activity.localeCompare(b.activity));
+    }
+    _groupedCache = grouped;
+    const sortedDates = Object.keys(grouped).sort(cmpDate).reverse();
+
+    let html = '';
+    for (const date of sortedDates) {
+      const items = grouped[date];
+      const dayTotal = items.reduce((s, r) => s + r.hours, 0);
+      const [, mo, d] = date.match(/(\d{4})\.(\d+)\.(\d+)/) || [];
+      const dayOfWeek = ['日','一','二','三','四','五','六'][new Date(parseInt(mo), parseInt(d)-1, parseInt(d)).getDay()];
+      html += '<div style="background:#fff;border-radius:var(--radius);box-shadow:var(--shadow);margin-bottom:12px;overflow:hidden;">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:#fafafa;border-bottom:1px solid var(--border);font-weight:600;font-size:16px;">' +
+          date + ' 周' + dayOfWeek +
+          '<span style="font-weight:400;color:var(--text-secondary);font-size:14px;">合计 ' + formatHours(dayTotal) + '</span>' +
+        '</div><table style="margin:0;"><tbody>';
+      for (let i = 0; i < items.length; i++) {
+        const r = items[i];
+        html += '<tr>' +
+          '<td style="width:36%;">' + r.activity + '</td>' +
+          '<td style="width:16%;"><span class="category-tag cat-' + r.category + '">' + (CAT_ICONS[r.category]||'') + ' ' + r.category + '</span></td>' +
+          '<td style="width:16%;">' + r.location + '</td>' +
+          '<td style="width:16%;font-weight:600;">' + formatHours(r.hours) + '</td>' +
+          '<td style="width:16%;text-align:right;">' +
+            '<button class="btn btn-sm btn-outline rec-edit" data-idx="' + i + '" data-date="' + date + '">✏️</button> ' +
+            '<button class="btn btn-sm btn-danger rec-del" data-idx="' + i + '" data-date="' + date + '">🗑</button>' +
+          '</td></tr>';
+      }
+      html += '</tbody></table></div>';
+    }
+    document.getElementById('records-list').innerHTML = html || '<div class="empty-state">暂无记录</div>';
+  }
+
+  document.getElementById('filter-month').addEventListener('change', renderTable);
+  document.getElementById('filter-category').addEventListener('change', renderTable);
+  document.getElementById('filter-search').addEventListener('input', renderTable);
+
+  document.getElementById('records-list').addEventListener('click', function(e) {
+    const btn = e.target.closest('button');
+    if (!btn) return;
+    const date = btn.dataset.date;
+    const idx = parseInt(btn.dataset.idx);
+    const rec = _groupedCache[date] && _groupedCache[date][idx];
+    if (!rec) return;
+    if (btn.classList.contains('rec-edit')) {
+      editRecord(rec.date, rec.activity, rec.category);
+    } else if (btn.classList.contains('rec-del')) {
+      deleteRecord(rec.date, rec.activity, rec.category);
+    }
+  });
+
+  renderTable();
+}
+
+// ===== CATEGORIES =====
+function renderCategories(main) {
+  const months = getMonthlyRecords();
+  const monthKeys = Object.keys(months).sort(cmpDate);
+  const latestMonth = monthKeys[monthKeys.length - 1];
+
+  main.innerHTML = `
+    <h2>🔖 分类分析</h2>
+    <div class="filters" style="margin-bottom:20px;">
+      <select id="cat-month"><option value="all">全部月份</option>${monthKeys.sort(cmpDate).reverse().map(m => `<option value="${m}" ${m===latestMonth?'selected':''}>${m}</option>`).join('')}</select>
+    </div>
+    <div id="cat-content"></div>
+  `;
+
+  function render() {
+    const selMonth = document.getElementById('cat-month').value;
+    const allRecords = getAllRecords();
+    const records = selMonth === 'all' ? allRecords : allRecords.filter(r => r.date.startsWith(selMonth + '.'));
+    const days = new Set(records.map(r => r.date)).size;
+
+    const catStats = {};
+    for (const r of records) {
+      if (!catStats[r.category]) catStats[r.category] = { hours: 0, activities: new Set(), locations: new Set() };
+      catStats[r.category].hours += r.hours;
+      catStats[r.category].activities.add(r.activity);
+      catStats[r.category].locations.add(r.location);
+    }
+
+    const sorted = Object.entries(catStats).sort((a, b) => b[1].hours - a[1].hours);
+    const totalHours = sorted.reduce((s, [, v]) => s + v.hours, 0);
+    const maxPct = sorted.length > 0 ? sorted[0][1].hours / totalHours * 100 : 0;
+
+    let html = '<div class="charts-row"><div class="chart-card"><h3>分类时间占比 (' + (selMonth === 'all' ? '全部' : selMonth) + ')</h3><div class="chart-wrap"><canvas id="chart-cat-pie"></canvas></div></div>';
+    html += '<div class="chart-card"><h3>分类量化指标</h3>';
+    html += '<div style="display:flex;flex-direction:column;gap:12px;">';
+
+    for (const [cat, stats] of sorted) {
+      const pct = totalHours > 0 ? (stats.hours / totalHours * 100).toFixed(1) : 0;
+      const dailyAvg = days > 0 ? (stats.hours / days).toFixed(1) : 0;
+      const barW = totalHours > 0 ? (stats.hours / totalHours * 100) : 0;
+      html += '<div>' +
+        '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">' +
+          '<span style="font-weight:600;font-size:16px;">' + (CAT_ICONS[cat]||'') + ' ' + cat + '</span>' +
+          '<span style="font-size:16px;font-weight:700;">' + formatHours(stats.hours) + ' <span style="font-size:13px;color:var(--text-secondary);font-weight:400;">(' + pct + '%)</span></span>' +
+        '</div>' +
+        '<div style="background:#e5e7eb;border-radius:4px;height:8px;overflow:hidden;">' +
+          '<div style="background:' + (CAT_COLORS[cat]||'#9ca3af') + ';height:100%;width:' + barW + '%;border-radius:4px;transition:width .3s;"></div>' +
+        '</div>' +
+        '<div style="display:flex;justify-content:space-between;margin-top:4px;font-size:13px;color:var(--text-secondary);">' +
+          '<span>' + stats.activities.size + ' 项活动 · ' + stats.locations.size + ' 个地点</span>' +
+          '<span>日均 ' + formatHours(parseFloat(dailyAvg)) + ' · 占比 ' + pct + '%</span>' +
+        '</div>' +
+      '</div>';
+    }
+
+    html += '</div></div></div>';
+
+    // Activity breakdown - full width
+    html += '<div class="chart-card" style="margin-top:16px;"><h3>各分类活动明细</h3>';
+    html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px;max-height:500px;overflow-y:auto;">';
+    for (const [cat, stats] of sorted) {
+      const actHours = {};
+      for (const r of records.filter(r => r.category === cat)) {
+        actHours[r.activity] = (actHours[r.activity] || 0) + r.hours;
+      }
+      const topActs = Object.entries(actHours).sort((a, b) => b[1] - a[1]).slice(0, 10);
+      const maxH = topActs.length > 0 ? topActs[0][1] : 1;
+      html += '<div style="background:#fafafa;border-radius:8px;padding:14px;border-left:3px solid ' + (CAT_COLORS[cat]||'#9ca3af') + ';">' +
+        '<div style="font-weight:600;font-size:16px;margin-bottom:10px;">' + (CAT_ICONS[cat]||'') + ' ' + cat + ' · ' + formatHours(stats.hours) + '</div>';
+      for (const [act, h] of topActs) {
+        const actPct = (h / stats.hours * 100).toFixed(0);
+        html += '<div style="margin-bottom:6px;">' +
+          '<div style="display:flex;justify-content:space-between;font-size:14px;margin-bottom:2px;"><span>' + act + '</span><span style="font-weight:500;">' + formatHours(h) + ' (' + actPct + '%)</span></div>' +
+          '<div style="background:#e5e7eb;border-radius:3px;height:4px;overflow:hidden;">' +
+            '<div style="background:' + (CAT_COLORS[cat]||'#9ca3af') + ';height:100%;width:' + (h/maxH*100) + '%;border-radius:3px;opacity:.5;"></div>' +
+          '</div>' +
+        '</div>';
+      }
+      html += '</div>';
+    }
+    html += '</div></div>';
+
+    document.getElementById('cat-content').innerHTML = html;
+
+    // Pie chart
+    const ctx = document.getElementById('chart-cat-pie').getContext('2d');
+    charts['cat-pie'] = new Chart(ctx, {
+      type: 'doughnut',
+      data: {
+        labels: sorted.map(([c]) => c),
+        datasets: [{ data: sorted.map(([, s]) => s.hours), backgroundColor: sorted.map(([c]) => CAT_COLORS[c]||'#9ca3af'), borderWidth: 2, borderColor: '#fff' }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: { position: 'bottom', labels: { padding: 12, usePointStyle: true } },
+          datalabels: {
+            color: '#fff', font: { weight: 'bold', size: 13 },
+            formatter: (v, ctx) => { const sum = ctx.dataset.data.reduce((a,b)=>a+b,0); const pct = sum>0 ? Math.round(v/sum*100) : 0; return pct >= 5 ? pct + '%' : ''; }
+          }
+        }
+      }
+    });
+  }
+
+  document.getElementById('cat-month').addEventListener('change', () => { destroyCharts(); render(); });
+  render();
+}
+
+// ===== MONTHLY COMPARISON =====
+function renderMonthly(main) {
+  const months = getMonthlyRecords();
+  const monthKeys = Object.keys(months).sort(cmpDate);
+  const allCats = [...new Set(getAllRecords().map(r => r.category))];
+
+  let html = '<h2>📅 月度对比</h2>';
+
+  // Summary table
+  html += '<div class="chart-card" style="margin-bottom:16px;overflow-x:auto;"><h3>各月总览</h3><table><thead><tr><th>月份</th><th>记录天数</th><th>记录条数</th><th>总时间</th><th>日均</th>';
+  for (const cat of allCats) html += `<th>${cat}</th>`;
+  html += '</tr></thead><tbody>';
+
+  for (const m of monthKeys) {
+    const recs = months[m];
+    const days = new Set(recs.map(r => r.date)).size;
+    const total = recs.reduce((s, r) => s + r.hours, 0);
+    const dayAvg = total / days;
+    html += '<tr><td style="font-weight:600;">' + m + '</td><td>' + days + '</td><td>' + recs.length + '</td><td>' + formatHours(total) + '</td><td>' + formatHours(dayAvg) + '</td>';
+    for (const cat of allCats) {
+      const h = recs.filter(r => r.category === cat).reduce((s, r) => s + r.hours, 0);
+      const pct = total > 0 ? (h / total * 100).toFixed(1) : 0;
+      html += '<td>' + (h > 0 ? formatHours(h) + ' <span style="font-size:12px;color:var(--text-secondary);">' + pct + '%</span>' : '-') + '</td>';
+    }
+    html += '</tr>';
+  }
+  // Add total row
+  const allRecs = getAllRecords();
+  const allDays = new Set(allRecs.map(r => r.date)).size;
+  const allTotal = allRecs.reduce((s, r) => s + r.hours, 0);
+  html += '<tr style="background:#fafafa;font-weight:700;"><td>合计</td><td>' + allDays + '</td><td>' + allRecs.length + '</td><td>' + formatHours(allTotal) + '</td><td>' + formatHours(allTotal/allDays) + '</td>';
+  for (const cat of allCats) {
+    const h = allRecs.filter(r => r.category === cat).reduce((s, r) => s + r.hours, 0);
+    const pct = allTotal > 0 ? (h / allTotal * 100).toFixed(1) : 0;
+    html += '<td>' + formatHours(h) + ' <span style="font-size:12px;font-weight:400;">' + pct + '%</span></td>';
+  }
+  html += '</tr>';
+  html += '</tbody></table></div>';
+
+  // Bar chart comparison
+  html += '<div class="charts-row"><div class="chart-card full"><h3>月度分类对比</h3><div class="chart-wrap tall"><canvas id="chart-monthly-bar"></canvas></div></div></div>';
+
+  // Trend
+  html += '<div class="chart-card" style="margin-top:16px;"><h3>各类别月度趋势</h3><div class="chart-wrap" style="height:350px;"><canvas id="chart-cat-trend"></canvas></div></div>';
+
+  main.innerHTML = html;
+
+  // Bar chart
+  const ctx1 = document.getElementById('chart-monthly-bar').getContext('2d');
+  charts['monthly-bar'] = new Chart(ctx1, {
+    type: 'bar',
+    data: {
+      labels: monthKeys,
+      datasets: allCats.map(cat => ({
+        label: cat,
+        data: monthKeys.map(m => months[m].filter(r => r.category === cat).reduce((s, r) => s + r.hours, 0)),
+        backgroundColor: CAT_COLORS[cat] || '#9ca3af'
+      }))
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: 'bottom', labels: { padding: 12, usePointStyle: true } } },
+      scales: { y: { stacked: false, title: { display: true, text: '小时' } } }
+    }
+  });
+
+  // Category trend
+  const ctx2 = document.getElementById('chart-cat-trend').getContext('2d');
+  charts['cat-trend'] = new Chart(ctx2, {
+    type: 'line',
+    data: {
+      labels: monthKeys,
+      datasets: allCats.map(cat => ({
+        label: cat,
+        data: monthKeys.map(m => months[m].filter(r => r.category === cat).reduce((s, r) => s + r.hours, 0)),
+        borderColor: CAT_COLORS[cat] || '#9ca3af',
+        backgroundColor: 'transparent', tension: .3, pointRadius: 4
+      }))
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: 'bottom', labels: { padding: 12, usePointStyle: true } } },
+      scales: { y: { title: { display: true, text: '小时' } } }
+    }
+  });
+}
+
+// ===== EISENHOWER MATRIX =====
+function loadMatrixTasks() {
+  const saved = JSON.parse(localStorage.getItem('lyu_matrix') || 'null');
+  if (saved) return saved;
+  // First load: merge embedded + user tasks
+  const embedded = (EMBEDDED_DATA.matrix || []).map(t => ({
+    id: 'emb_' + Math.random().toString(36).slice(2, 8),
+    quadrant: classifyMatrix(t.urgency, t.importance),
+    task: t.task,
+    detail: t.details || '',
+    deadline: t.deadline || '',
+    note: t.notes || ''
+  }));
+  localStorage.setItem('lyu_matrix', JSON.stringify(embedded));
+  return embedded;
+}
+function saveMatrixTasks(tasks) { localStorage.setItem('lyu_matrix', JSON.stringify(tasks)); }
+function classifyMatrix(urgency, importance) {
+  const u = (urgency || '').includes('紧急');
+  const i = (importance || '').includes('重要');
+  if (u && i) return 'q1';
+  if (!u && i) return 'q2';
+  if (u && !i) return 'q3';
+  return 'q4';
+}
+
+function renderMatrix(main) {
+  const quadrants = {
+    q1: { title: '重要且紧急 🔴', cls: 'q-urgent-important', desc: '立即去做' },
+    q2: { title: '重要不紧急 🔵', cls: 'q-noturgent-important', desc: '计划去做' },
+    q3: { title: '紧急不重要 🟡', cls: 'q-urgent-notimportant', desc: '委托他人' },
+    q4: { title: '不重要不紧急 ⚪', cls: 'q-noturgent-notimportant', desc: '尽量不做' }
+  };
+  const tasks = loadMatrixTasks();
+
+  main.innerHTML = '<h2>📋 艾森豪威尔矩阵</h2>' +
+    '<div style="margin-bottom:16px;display:flex;gap:8px;">' +
+      '<button class="btn btn-primary" onclick="showMatrixAddModal()">+ 添加待办事项</button>' +
+    '</div>' +
+    '<div class="matrix-grid">' +
+      Object.entries(quadrants).map(([k, q]) => {
+        const items = tasks.filter(t => t.quadrant === k);
+        return '<div class="matrix-q ' + q.cls + '">' +
+          '<h3>' + q.title + ' <span style="font-weight:400;font-size:14px;color:var(--text-secondary);">' + q.desc + '</span></h3>' +
+          items.map(t =>
+            '<div class="matrix-item" style="position:relative;">' +
+              '<div class="task">' + escHtml(t.task) + '</div>' +
+              (t.detail ? '<div class="detail">📝 ' + escHtml(t.detail) + '</div>' : '') +
+              (t.deadline ? '<div class="detail">⏰ 截止: ' + escHtml(t.deadline) + '</div>' : '') +
+              (t.note ? '<div class="detail">💡 ' + escHtml(t.note) + '</div>' : '') +
+              '<div style="margin-top:8px;display:flex;gap:4px;">' +
+                '<button class="btn btn-sm btn-outline" onclick="editMatrixTask(\'' + t.id + '\')">✏️</button>' +
+                '<button class="btn btn-sm btn-danger" onclick="deleteMatrixTask(\'' + t.id + '\')">🗑</button>' +
+              '</div>' +
+            '</div>'
+          ).join('') +
+          (items.length === 0 ? '<div style="color:#999;font-size:14px;padding:20px;text-align:center;">暂无任务</div>' : '') +
+        '</div>';
+      }).join('') +
+    '</div>';
+}
+
+window.showMatrixAddModal = function() {
+  const content = document.getElementById('modal-content');
+  content.innerHTML = '<h3>添加待办事项</h3>' +
+    '<div class="form-group"><label>任务名称</label><input type="text" id="mtask-name" placeholder="例如：完成报告初稿"></div>' +
+    '<div class="form-group"><label>所属象限</label><select id="mtask-quadrant">' +
+      '<option value="q1">重要且紧急</option><option value="q2" selected>重要不紧急</option>' +
+      '<option value="q3">紧急不重要</option><option value="q4">不重要不紧急</option>' +
+    '</select></div>' +
+    '<div class="form-group"><label>详细描述</label><input type="text" id="mtask-detail" placeholder="具体要做的事情..."></div>' +
+    '<div class="form-group"><label>截止日期</label><input type="text" id="mtask-deadline" placeholder="例如：6.30前"></div>' +
+    '<div class="form-group"><label>备注</label><input type="text" id="mtask-note" placeholder="备注信息..."></div>' +
+    '<div class="modal-actions">' +
+      '<button class="btn btn-outline" onclick="closeModal()">取消</button>' +
+      '<button class="btn btn-primary" onclick="saveMatrixAdd()">保存</button>' +
+    '</div>';
+  document.getElementById('modal').style.display = 'flex';
+};
+
+window.saveMatrixAdd = function() {
+  const task = document.getElementById('mtask-name').value.trim();
+  if (!task) { alert('请输入任务名称'); return; }
+  const tasks = loadMatrixTasks();
+  tasks.push({
+    id: 't_' + Date.now(),
+    quadrant: document.getElementById('mtask-quadrant').value,
+    task: task,
+    detail: document.getElementById('mtask-detail').value.trim(),
+    deadline: document.getElementById('mtask-deadline').value.trim(),
+    note: document.getElementById('mtask-note').value.trim()
+  });
+  saveMatrixTasks(tasks);
+  closeModal();
+  renderPage('matrix');
+};
+
+window.editMatrixTask = function(id) {
+  const tasks = loadMatrixTasks();
+  const t = tasks.find(x => x.id === id);
+  if (!t) return;
+  const content = document.getElementById('modal-content');
+  content.innerHTML = '<h3>编辑待办事项</h3>' +
+    '<div class="form-group"><label>任务名称</label><input type="text" id="mtask-name" value="' + escHtml(t.task) + '"></div>' +
+    '<div class="form-group"><label>所属象限</label><select id="mtask-quadrant">' +
+      ['q1','q2','q3','q4'].map(q => '<option value="' + q + '" ' + (q === t.quadrant ? 'selected' : '') + '>' + ({q1:'重要且紧急',q2:'重要不紧急',q3:'紧急不重要',q4:'不重要不紧急'})[q] + '</option>').join('') +
+    '</select></div>' +
+    '<div class="form-group"><label>详细描述</label><input type="text" id="mtask-detail" value="' + escHtml(t.detail||'') + '"></div>' +
+    '<div class="form-group"><label>截止日期</label><input type="text" id="mtask-deadline" value="' + escHtml(t.deadline||'') + '"></div>' +
+    '<div class="form-group"><label>备注</label><input type="text" id="mtask-note" value="' + escHtml(t.note||'') + '"></div>' +
+    '<input type="hidden" id="mtask-id" value="' + id + '">' +
+    '<div class="modal-actions">' +
+      '<button class="btn btn-outline" onclick="closeModal()">取消</button>' +
+      '<button class="btn btn-primary" onclick="saveMatrixEdit()">保存</button>' +
+    '</div>';
+  document.getElementById('modal').style.display = 'flex';
+};
+
+window.saveMatrixEdit = function() {
+  const id = document.getElementById('mtask-id').value;
+  const task = document.getElementById('mtask-name').value.trim();
+  if (!task) { alert('请输入任务名称'); return; }
+  let tasks = loadMatrixTasks();
+  const idx = tasks.findIndex(x => x.id === id);
+  if (idx >= 0) {
+    tasks[idx] = {
+      ...tasks[idx],
+      quadrant: document.getElementById('mtask-quadrant').value,
+      task: task,
+      detail: document.getElementById('mtask-detail').value.trim(),
+      deadline: document.getElementById('mtask-deadline').value.trim(),
+      note: document.getElementById('mtask-note').value.trim()
+    };
+  }
+  saveMatrixTasks(tasks);
+  closeModal();
+  renderPage('matrix');
+};
+
+window.deleteMatrixTask = function(id) {
+  if (!confirm('确定删除此任务?')) return;
+  let tasks = loadMatrixTasks();
+  tasks = tasks.filter(x => x.id !== id);
+  saveMatrixTasks(tasks);
+  renderPage('matrix');
+};
+
+// ===== ADD / EDIT / DELETE RECORDS =====
+function toDateInput(d) { const p = d.split('.'); return p.length === 3 ? `${p[0]}-${p[1].padStart(2,'0')}-${p[2].padStart(2,'0')}` : d; }
+function fromDateInput(d) { return d.replace(/-/g, '.'); }
+function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/'/g,'&#39;'); }
+
+window.showAddModal = function() {
+  const content = document.getElementById('modal-content');
+  content.innerHTML = `<h3>添加新记录</h3>
+    <div class="form-group"><label>日期</label><input type="date" id="add-date" value="${new Date().toISOString().slice(0,10)}"></div>
+    <div class="form-group"><label>活动内容</label><input type="text" id="add-activity" placeholder="例如：阅读、运动..."></div>
+    <div class="form-group"><label>分类</label><select id="add-category">${Object.keys(CAT_COLORS).map(c => `<option value="${c}">${c}</option>`).join('')}</select></div>
+    <div class="form-group"><label>地点</label><input type="text" id="add-location" placeholder="例如：家中、办公室..."></div>
+    <div class="form-group"><label>时长 (小时)</label><input type="number" id="add-hours" step="0.25" min="0.25" max="24" placeholder="0.5"></div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeModal()">取消</button>
+      <button class="btn btn-primary" onclick="saveAdd()">保存</button>
+    </div>`;
+  document.getElementById('modal').style.display = 'flex';
+};
+
+window.saveAdd = function() {
+  const date = fromDateInput(document.getElementById('add-date').value);
+  const activity = document.getElementById('add-activity').value.trim();
+  const category = document.getElementById('add-category').value;
+  const location = document.getElementById('add-location').value.trim();
+  const hours = parseFloat(document.getElementById('add-hours').value);
+  if (!date || !activity || !hours) { alert('请填写日期、活动和时长'); return; }
+  const saved = JSON.parse(localStorage.getItem('lyu_records') || '[]');
+  saved.push({ date, activity, category, location, hours });
+  localStorage.setItem('lyu_records', JSON.stringify(saved));
+  closeModal();
+  renderPage('records');
+};
+
+let _editOrig = null;
+window.editRecord = function(date, activity, category) {
+  const records = getAllRecords();
+  const record = records.find(r => r.date === date && r.activity === activity && r.category === category);
+  if (!record) return;
+  _editOrig = { date, activity, category };
+  const content = document.getElementById('modal-content');
+  content.innerHTML = `<h3>编辑记录</h3>
+    <div class="form-group"><label>日期</label><input type="date" id="edit-date" value="${toDateInput(record.date)}"></div>
+    <div class="form-group"><label>活动内容</label><input type="text" id="edit-activity" value="${escHtml(record.activity)}"></div>
+    <div class="form-group"><label>分类</label><select id="edit-category">${Object.keys(CAT_COLORS).map(c => `<option value="${c}" ${c===record.category?'selected':''}>${c}</option>`).join('')}</select></div>
+    <div class="form-group"><label>地点</label><input type="text" id="edit-location" value="${escHtml(record.location||'')}"></div>
+    <div class="form-group"><label>时长 (小时)</label><input type="number" id="edit-hours" step="0.25" min="0.25" max="24" value="${record.hours}"></div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeModal()">取消</button>
+      <button class="btn btn-primary" onclick="saveEdit()">保存</button>
+    </div>`;
+  document.getElementById('modal').style.display = 'flex';
+};
+
+window.saveEdit = function() {
+  if (!_editOrig) return;
+  const date = fromDateInput(document.getElementById('edit-date').value);
+  const activity = document.getElementById('edit-activity').value.trim();
+  const category = document.getElementById('edit-category').value;
+  const location = document.getElementById('edit-location').value.trim();
+  const hours = parseFloat(document.getElementById('edit-hours').value);
+  if (!date || !activity || !hours) { alert('请填写日期、活动和时长'); return; }
+
+  const { date: oDate, activity: oAct, category: oCat } = _editOrig;
+  let saved = JSON.parse(localStorage.getItem('lyu_records') || '[]');
+  const embKey = oDate + '|' + oAct + '|' + oCat;
+  let isEmbedded = false;
+  for (const m of Object.keys(EMBEDDED_DATA.months)) {
+    if (EMBEDDED_DATA.months[m].some(r => r.date + '|' + r.activity + '|' + r.category === embKey)) {
+      isEmbedded = true; break;
+    }
+  }
+  if (isEmbedded) {
+    saved.push({ date, activity, category, location, hours, _overrides: embKey });
+  } else {
+    const idx = saved.findIndex(r => r.date === oDate && r.activity === oAct && r.category === oCat);
+    if (idx >= 0) saved[idx] = { date, activity, category, location, hours };
+  }
+  localStorage.setItem('lyu_records', JSON.stringify(saved));
+  _editOrig = null;
+  closeModal();
+  renderPage('records');
+};
+
+window.deleteRecord = function(date, activity, category) {
+  if (!confirm(`确定删除 "${activity}"?`)) return;
+  const embKey = date + '|' + activity + '|' + category;
+  let isEmbedded = false;
+  for (const m of Object.keys(EMBEDDED_DATA.months)) {
+    if (EMBEDDED_DATA.months[m].some(r => r.date + '|' + r.activity + '|' + r.category === embKey)) {
+      isEmbedded = true; break;
+    }
+  }
+  let saved = JSON.parse(localStorage.getItem('lyu_records') || '[]');
+  if (isEmbedded) {
+    saved.push({ _deleted: embKey });
+  } else {
+    saved = saved.filter(r => !(r.date === date && r.activity === activity && r.category === category));
+  }
+  localStorage.setItem('lyu_records', JSON.stringify(saved));
+  renderPage('records');
+};
+
+window.closeModal = function() {
+  document.getElementById('modal').style.display = 'none';
+  _editOrig = null;
+};
+document.getElementById('modal').addEventListener('click', function(e) { if (e.target === this) closeModal(); });
+
+// ===== EXPORT =====
+function downloadFile(filename, content, mimeType) {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+window.exportCSV = function() {
+  const records = getAllRecords();
+  if (records.length === 0) { alert('没有记录可导出'); return; }
+  const BOM = '﻿';
+  const header = '日期,地点,活动,分类,时长(h)';
+  const rows = records.map(r => [r.date, `"${(r.location||'').replace(/"/g,'""')}"`, `"${r.activity.replace(/"/g,'""')}"`, r.category, r.hours].join(','));
+  downloadFile('时间记录.csv', BOM + header + '\n' + rows.join('\n'), 'text/csv;charset=utf-8');
+};
+
+window.exportJSON = function() {
+  const records = getAllRecords();
+  if (records.length === 0) { alert('没有记录可导出'); return; }
+  downloadFile('时间记录.json', JSON.stringify(records, null, 2), 'application/json');
+};
+
+window.exportSummaryCSV = function() {
+  const months = getMonthlyRecords();
+  const monthKeys = Object.keys(months).sort(cmpDate);
+  const allCats = [...new Set(getAllRecords().map(r => r.category))];
+  if (monthKeys.length === 0) { alert('没有数据可导出'); return; }
+  const BOM = '﻿';
+  const header = '月份,记录天数,总时间(h),日均(h),' + allCats.join(',');
+  const rows = monthKeys.map(m => {
+    const recs = months[m];
+    const days = new Set(recs.map(r => r.date)).size;
+    const total = recs.reduce((s, r) => s + r.hours, 0);
+    const dayAvg = total / days;
+    const catHours = allCats.map(c => recs.filter(r => r.category === c).reduce((s, r) => s + r.hours, 0).toFixed(1));
+    return [m, days, total.toFixed(1), dayAvg.toFixed(1), ...catHours].join(',');
+  });
+  downloadFile('月度汇总.csv', BOM + header + '\n' + rows.join('\n'), 'text/csv;charset=utf-8');
+};
+
+// ===== INIT =====
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+}
+renderPage('dashboard');
+</script>
+
+</body>
+</html>
