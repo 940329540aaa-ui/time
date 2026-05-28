@@ -12,6 +12,8 @@
 <title>柳比歇夫时间管理</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 :root {
@@ -172,6 +174,13 @@ tr:hover td { background: #fafafa; }
       艾森豪威尔矩阵
     </a>
   </nav>
+  <div style="padding:12px;border-top:1px solid rgba(255,255,255,.08);">
+    <a data-page="settings" style="display:flex;align-items:center;gap:10px;padding:8px 12px;color:var(--sidebar-text);text-decoration:none;border-radius:8px;font-size:14px;cursor:pointer;transition:all .15s;" onmouseover="this.style.background='rgba(255,255,255,.06)'" onmouseout="this.style.background='transparent'">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px;height:18px;"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      云同步
+    </a>
+    <div id="sync-status" style="font-size:11px;color:#64748b;text-align:center;margin-top:6px;"></div>
+  </div>
 </aside>
 
 <main class="main" id="main-content"></main>
@@ -199,31 +208,144 @@ function cmpDate(a, b) {
   for (let i = 0; i < 3; i++) { if (pa[i] !== pb[i]) return pa[i] - pb[i]; }
   return 0;
 }
-function loadData() {
-  const key = r => [r.date, r.activity, r.category].join('|');
-  const merged = new Map();
-  for (const m of Object.keys(EMBEDDED_DATA.months)) {
-    for (const r of EMBEDDED_DATA.months[m]) {
-      if (r.date) merged.set(key(r), { ...r });
+
+const SYNC_CONFIG_KEY = 'lyu_sync_config';
+let firestore = null;
+let syncUnsub = null;
+let syncPaused = false; // prevent feedback loop when updating from remote
+
+function getSyncConfig() {
+  try { return JSON.parse(localStorage.getItem(SYNC_CONFIG_KEY) || 'null'); } catch { return null; }
+}
+
+function initFirebase(config) {
+  if (!firebase.apps.length) firebase.initializeApp(config);
+  firestore = firebase.firestore();
+  firestore.enablePersistence().catch(function(e) {
+    if (e.code === 'failed-precondition') console.warn('Firebase persistence: multiple tabs open');
+  });
+}
+
+function isSyncReady() { return !!firestore; }
+
+function updateSyncStatus(text, ok) {
+  var el = document.getElementById('sync-status');
+  if (!el) return;
+  el.textContent = text;
+  el.style.color = ok ? '#10b981' : '#ef4444';
+}
+
+async function syncPush(records, matrix) {
+  if (!firestore) return false;
+  try {
+    await firestore.collection('userData').doc('main').set({
+      records: records,
+      matrix: matrix || null,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    updateSyncStatus('已同步', true);
+    return true;
+  } catch (e) {
+    updateSyncStatus('同步失败', false);
+    return false;
+  }
+}
+
+function syncListen(onRemoteData) {
+  if (syncUnsub) { syncUnsub(); syncUnsub = null; }
+  if (!firestore) return;
+  syncUnsub = firestore.collection('userData').doc('main')
+    .onSnapshot(function(snap) {
+      if (!snap.exists) return;
+      var data = snap.data();
+      if (!data || !data.updatedAt) return;
+      if (syncPaused) return;
+      onRemoteData(data);
+    }, function(err) {
+      console.warn('syncListen error:', err);
+    });
+}
+
+// Resolve all records from embedded data + user overrides (without using sync)
+function resolveFromEmbedded() {
+  var key = function(r) { return [r.date, r.activity, r.category].join('|'); };
+  var merged = new Map();
+  for (var m in EMBEDDED_DATA.months) {
+    if (!EMBEDDED_DATA.months.hasOwnProperty(m)) continue;
+    for (var i = 0; i < EMBEDDED_DATA.months[m].length; i++) {
+      var r = EMBEDDED_DATA.months[m][i];
+      if (r.date) merged.set(key(r), { date: r.date, location: r.location, activity: r.activity, category: r.category, hours: r.hours });
     }
   }
-  const saved = JSON.parse(localStorage.getItem('lyu_records') || '[]');
-  const deleted = new Set(), overrides = new Map();
-  for (const r of saved) {
+  var saved = JSON.parse(localStorage.getItem('lyu_records') || '[]');
+  var deleted = new Set(), overrides = new Map();
+  for (var i = 0; i < saved.length; i++) {
+    var r = saved[i];
     if (r._deleted) { deleted.add(r._deleted); continue; }
     if (r._overrides) { overrides.set(r._overrides, r); continue; }
     merged.set(key(r), { date: r.date, location: r.location, activity: r.activity, category: r.category, hours: r.hours });
   }
-  for (const [oldKey, r] of overrides) {
-    const k = key(r);
+  for (var entry of overrides) {
+    var oldKey = entry[0], r = entry[1];
+    var k = key(r);
     if (oldKey !== k) merged.delete(oldKey);
     merged.set(k, { date: r.date, location: r.location, activity: r.activity, category: r.category, hours: r.hours });
   }
-  for (const d of deleted) merged.delete(d);
-  return [...merged.values()].sort((a, b) => -cmpDate(a.date, b.date));
+  for (var d of deleted) merged.delete(d);
+  return [...merged.values()].sort(function(a, b) { return -cmpDate(a.date, b.date); });
 }
 
-function getAllRecords() { return loadData(); }
+function afterLocalSave() {
+  // After any local data change, re-resolve and push to cloud if sync is active
+  if (!isSyncReady()) return;
+  var records = resolveFromEmbedded();
+  var matrix = JSON.parse(localStorage.getItem('lyu_matrix') || 'null');
+  localStorage.setItem('lyu_resolved', JSON.stringify(records));
+  syncPush(records, matrix);
+}
+
+// Activate sync: upload local data and start listening
+function activateSync(config) {
+  localStorage.setItem(SYNC_CONFIG_KEY, JSON.stringify(config));
+  initFirebase(config);
+  var records = resolveFromEmbedded();
+  localStorage.setItem('lyu_resolved', JSON.stringify(records));
+  var matrix = JSON.parse(localStorage.getItem('lyu_matrix') || 'null');
+  syncPush(records, matrix).then(function(ok) {
+    if (!ok) {
+      alert('同步上传失败。\n\n请确认已在 Firebase 控制台创建了 Firestore 数据库：\n\n1. 打开 https://console.firebase.google.com/project/farank-f5ef6/firestore\n2. 点击"创建数据库"\n3. 选 asia-east2（香港），测试模式\n4. 创建后再刷新本页面，点击"一键开启"\n\n如果已创建仍失败，可能需要开启 VPN/代理。');
+      updateSyncStatus('Firestore 未创建', false);
+    }
+  });
+  syncListen(function(data) {
+    if (data.records) {
+      localStorage.setItem('lyu_resolved', JSON.stringify(data.records));
+    }
+    if (data.matrix) {
+      localStorage.setItem('lyu_matrix', JSON.stringify(data.matrix));
+    }
+    if (currentPage !== 'settings') destroyCharts();
+    renderPage(currentPage);
+    updateSyncStatus('已同步', true);
+  });
+  updateSyncStatus('同步中...', true);
+}
+
+function deactivateSync() {
+  if (syncUnsub) { syncUnsub(); syncUnsub = null; }
+  firestore = null;
+  localStorage.removeItem(SYNC_CONFIG_KEY);
+  localStorage.removeItem('lyu_resolved');
+  updateSyncStatus('云同步未开启', false);
+}
+
+// ===== DATA LOADING =====
+function getAllRecords() {
+  // If sync is configured and we have resolved data, use it directly
+  var resolved = JSON.parse(localStorage.getItem('lyu_resolved') || 'null');
+  if (getSyncConfig() && resolved && resolved.length > 0) return resolved;
+  return resolveFromEmbedded();
+}
 
 function getMonthlyRecords() {
   const records = getAllRecords();
@@ -246,9 +368,9 @@ function formatHours(h) {
 let currentPage = 'dashboard';
 let charts = {};
 
-document.querySelectorAll('.sidebar-nav a').forEach(link => {
+document.querySelectorAll('.sidebar-nav a, .sidebar-nav + div a').forEach(link => {
   link.addEventListener('click', () => {
-    document.querySelectorAll('.sidebar-nav a').forEach(l => l.classList.remove('active'));
+    document.querySelectorAll('.sidebar-nav a, .sidebar-nav + div a').forEach(l => l.classList.remove('active'));
     link.classList.add('active');
     const page = link.dataset.page;
     if (page !== currentPage) {
@@ -273,6 +395,7 @@ function renderPage(page) {
     case 'categories': renderCategories(main); break;
     case 'monthly': renderMonthly(main); break;
     case 'matrix': renderMatrix(main); break;
+    case 'settings': renderSettings(main); break;
   }
 }
 
@@ -801,6 +924,7 @@ window.saveMatrixAdd = function() {
     note: document.getElementById('mtask-note').value.trim()
   });
   saveMatrixTasks(tasks);
+  afterLocalSave();
   closeModal();
   renderPage('matrix');
 };
@@ -843,6 +967,7 @@ window.saveMatrixEdit = function() {
     };
   }
   saveMatrixTasks(tasks);
+  afterLocalSave();
   closeModal();
   renderPage('matrix');
 };
@@ -852,6 +977,7 @@ window.deleteMatrixTask = function(id) {
   let tasks = loadMatrixTasks();
   tasks = tasks.filter(x => x.id !== id);
   saveMatrixTasks(tasks);
+  afterLocalSave();
   renderPage('matrix');
 };
 
@@ -886,6 +1012,7 @@ window.saveAdd = function() {
   saved.push({ date, activity, category, location, hours });
   localStorage.setItem('lyu_records', JSON.stringify(saved));
   closeModal();
+  afterLocalSave();
   renderPage('records');
 };
 
@@ -936,6 +1063,7 @@ window.saveEdit = function() {
   localStorage.setItem('lyu_records', JSON.stringify(saved));
   _editOrig = null;
   closeModal();
+  afterLocalSave();
   renderPage('records');
 };
 
@@ -955,6 +1083,7 @@ window.deleteRecord = function(date, activity, category) {
     saved = saved.filter(r => !(r.date === date && r.activity === activity && r.category === category));
   }
   localStorage.setItem('lyu_records', JSON.stringify(saved));
+  afterLocalSave();
   renderPage('records');
 };
 
@@ -1008,10 +1137,138 @@ window.exportSummaryCSV = function() {
   downloadFile('月度汇总.csv', BOM + header + '\n' + rows.join('\n'), 'text/csv;charset=utf-8');
 };
 
+// ===== SETTINGS =====
+// 预置 Firebase 配置
+var PRE_CONFIG = {"apiKey":"AIzaSyD3nykOPlDJ8epGquWOYhNqrPJ-JQ4mb_s","authDomain":"farank-f5ef6.firebaseapp.com","projectId":"farank-f5ef6","storageBucket":"farank-f5ef6.firebasestorage.app","messagingSenderId":"973388844658","appId":"1:973388844658:web:5bf04461621151786e3ceb","measurementId":"G-BY1ELC9H1N"};
+
+function renderSettings(main) {
+  var config = getSyncConfig();
+  var isActive = config && firebase.apps.length;
+  var preCfgStr = JSON.stringify(PRE_CONFIG, null, 2);
+  main.innerHTML = '<h2>☁️ 云同步设置</h2>' +
+    '<div class="chart-card" style="max-width:600px;margin-bottom:16px;">' +
+      '<h3>多设备数据同步</h3>' +
+      '<p style="color:var(--text-secondary);margin-bottom:16px;font-size:15px;line-height:1.6;">' +
+      '数据存储在 Firebase 云端，电脑和手机自动实时同步。一处修改，处处更新。</p>' +
+      (isActive ? '<div style="background:#d1fae5;color:#065f46;padding:12px 16px;border-radius:8px;margin-bottom:16px;font-size:15px;">✓ 云同步已开启 — 数据将自动在设备间同步</div>' :
+      '<div style="background:#fef3c7;color:#92400e;padding:12px 16px;border-radius:8px;margin-bottom:16px;font-size:15px;">⚠️ 还需要创建 Firestore 数据库（见下方步骤）</div>') +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
+        (isActive
+          ? '<button class="btn btn-danger" onclick="deactivateSync();renderPage(\'settings\')">断开云同步</button>'
+          : '<button class="btn btn-primary" style="font-size:17px;padding:10px 24px;" onclick="activateSync(PRE_CONFIG);renderPage(\'settings\')">🚀 一键开启云同步</button>') +
+        '<button class="btn btn-outline" onclick="renderPage(\'dashboard\')">返回总览</button>' +
+      '</div>' +
+    '</div>' +
+    '<details style="max-width:600px;font-size:14px;color:var(--text-secondary);line-height:1.6;">' +
+      '<summary style="cursor:pointer;font-weight:600;margin-bottom:8px;">📋 完整步骤（如果一键开启不成功再来看）</summary>' +
+      '<div class="chart-card" style="padding:12px 16px;margin-bottom:12px;">' +
+        '<strong>第1步：创建 Firestore 数据库（必须）</strong>' +
+        '<ol style="padding-left:20px;display:flex;flex-direction:column;gap:6px;margin-top:8px;">' +
+          '<li>打开 <a href="https://console.firebase.google.com/project/farank-f5ef6/firestore" target="_blank" style="color:var(--primary)">Firebase Firestore 页面</a></li>' +
+          '<li>点击 <b>创建数据库</b></li>' +
+          '<li>位置选 <b>asia-east2</b>（香港）</li>' +
+          '<li>安全规则选 <b>测试模式</b></li>' +
+          '<li>点击 <b>启用</b></li>' +
+        '</ol>' +
+      '</div>' +
+      '<div class="chart-card" style="padding:12px 16px;margin-bottom:12px;">' +
+        '<strong>第2步：开启同步</strong>' +
+        '<p style="margin-top:6px;">刷新本页面 → 侧边栏点"云同步" → 点击上方"一键开启云同步"</p>' +
+      '</div>' +
+      '<div class="chart-card" style="padding:12px 16px;">' +
+        '<strong>第3步：手机/其他设备同步</strong>' +
+        '<p style="margin-top:6px;">在手机上打开网站，同样点"云同步" → "一键开启"，数据就会自动合并</p>' +
+      '</div>' +
+      '<p style="margin-top:12px;">预置配置: <code style="background:#f1f5f9;padding:2px 6px;border-radius:4px;">firebase: farank-f5ef6</code></p>' +
+    '</details>';
+  // Also allow manual config via textarea for advanced users
+  main.innerHTML += '<details style="max-width:600px;font-size:14px;color:var(--text-secondary);margin-top:8px;">' +
+    '<summary style="cursor:pointer;">高级：手动输入配置</summary>' +
+    '<div class="form-group" style="margin-top:8px;">' +
+    '<textarea id="fb-config" rows="6" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;font-size:14px;font-family:monospace;outline:none;resize:vertical;">' + (config ? escHtml(JSON.stringify(config, null, 2)) : escHtml(preCfgStr)) + '</textarea></div>' +
+    '<button class="btn btn-outline btn-sm" onclick="applySyncConfig()">使用自定义配置</button>' +
+    '</details>';
+}
+
+window.applySyncConfig = function() {
+  var text = document.getElementById('fb-config').value.trim();
+  if (!text) { alert('请输入 Firebase 配置'); return; }
+  try {
+    var config = JSON.parse(text);
+    if (!config.apiKey || !config.projectId) { alert('配置缺少 apiKey 或 projectId'); return; }
+    activateSync(config);
+    renderPage('settings');
+  } catch (e) {
+    alert('配置格式错误，请检查 JSON 格式');
+  }
+};
+
+function getMonthlyRecords() {
+  const records = getAllRecords();
+  const months = {};
+  for (const r of records) {
+    const m = r.date.split('.').slice(0, 2).join('.');
+    if (!months[m]) months[m] = [];
+    months[m].push(r);
+  }
+  return months;
+}
+
+function formatHours(h) {
+  const hrs = Math.floor(h);
+  const mins = Math.round((h - hrs) * 60);
+  return mins > 0 ? `${hrs}h${mins}m` : `${hrs}h`;
+}
+
 // ===== INIT =====
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js').catch(() => {});
-}
+}(function() {
+  var cfg = getSyncConfig();
+  if (cfg) {
+    try {
+      initFirebase(cfg);
+      firestore.collection('userData').doc('main').get().then(function(doc) {
+        if (doc.exists) {
+          var data = doc.data();
+          if (data.records && data.records.length > 0) {
+            localStorage.setItem('lyu_resolved', JSON.stringify(data.records));
+          }
+          if (data.matrix) {
+            localStorage.setItem('lyu_matrix', JSON.stringify(data.matrix));
+          }
+        } else {
+          // First time: upload local data
+          var records = resolveFromEmbedded();
+          localStorage.setItem('lyu_resolved', JSON.stringify(records));
+          var matrix = JSON.parse(localStorage.getItem('lyu_matrix') || 'null');
+          syncPush(records, matrix);
+        }
+        updateSyncStatus('已同步', true);
+      }).catch(function() {
+        // Offline - use local data
+        updateSyncStatus('离线模式', false);
+      });
+      // Start listening for remote changes
+      syncListen(function(data) {
+        if (data.records) {
+          localStorage.setItem('lyu_resolved', JSON.stringify(data.records));
+        }
+        if (data.matrix) {
+          localStorage.setItem('lyu_matrix', JSON.stringify(data.matrix));
+        }
+        if (currentPage !== 'settings') destroyCharts();
+        renderPage(currentPage);
+        updateSyncStatus('已同步', true);
+      });
+    } catch (e) {
+      updateSyncStatus('同步配置无效', false);
+    }
+  } else {
+    updateSyncStatus('云同步未开启', false);
+  }
+})();
+
 renderPage('dashboard');
 </script>
 
