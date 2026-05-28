@@ -298,9 +298,12 @@ function resolveFromEmbedded() {
 function afterLocalSave() {
   // After any local data change, re-resolve and push to cloud if sync is active
   if (!isSyncReady()) return;
-  var records = resolveFromEmbedded();
-  var matrix = JSON.parse(localStorage.getItem('lyu_matrix') || 'null');
+  // Use getAllRecords() which returns lyu_resolved when sync is active
+  // lyu_resolved already has the latest cloud data; lyu_records changes
+  // are merged in via resolveFromEmbedded() fallback
+  var records = getAllRecords();
   localStorage.setItem('lyu_resolved', JSON.stringify(records));
+  var matrix = JSON.parse(localStorage.getItem('lyu_matrix') || 'null');
   syncPush(records, matrix);
 }
 
@@ -308,27 +311,42 @@ function afterLocalSave() {
 function activateSync(config) {
   localStorage.setItem(SYNC_CONFIG_KEY, JSON.stringify(config));
   initFirebase(config);
-  var records = resolveFromEmbedded();
-  localStorage.setItem('lyu_resolved', JSON.stringify(records));
-  var matrix = JSON.parse(localStorage.getItem('lyu_matrix') || 'null');
-  syncPush(records, matrix).then(function(ok) {
-    if (!ok) {
-      alert('同步上传失败。\n\n请确认已在 Firebase 控制台创建了 Firestore 数据库：\n\n1. 打开 https://console.firebase.google.com/project/farank-f5ef6/firestore\n2. 点击"创建数据库"\n3. 选 asia-east2（香港），测试模式\n4. 创建后再刷新本页面，点击"一键开启"\n\n如果已创建仍失败，可能需要开启 VPN/代理。');
-      updateSyncStatus('Firestore 未创建', false);
+  updateSyncStatus('同步中...', true);
+  // First check if cloud already has data (another device might have synced first)
+  firestore.collection('userData').doc('main').get().then(function(doc) {
+    if (doc.exists && doc.data().records && doc.data().records.length > 0) {
+      // Cloud has data → use it
+      var data = doc.data();
+      localStorage.setItem('lyu_resolved', JSON.stringify(data.records));
+      if (data.matrix) localStorage.setItem('lyu_matrix', JSON.stringify(data.matrix));
+      updateSyncStatus('已同步', true);
+      if (currentPage !== 'settings') destroyCharts();
+      renderPage(currentPage);
+    } else {
+      // Cloud is empty → upload local data
+      var records = resolveFromEmbedded();
+      localStorage.setItem('lyu_resolved', JSON.stringify(records));
+      var matrix = JSON.parse(localStorage.getItem('lyu_matrix') || 'null');
+      syncPush(records, matrix).then(function(ok) {
+        if (!ok) {
+          alert('同步上传失败。\n\n可能需要开启 VPN/代理，或确认 Firestore 数据库已创建：\nhttps://console.firebase.google.com/project/farank-f5ef6/firestore');
+          updateSyncStatus('连接失败', false);
+        }
+      });
     }
+  }).catch(function() {
+    var records = resolveFromEmbedded();
+    localStorage.setItem('lyu_resolved', JSON.stringify(records));
+    var matrix = JSON.parse(localStorage.getItem('lyu_matrix') || 'null');
+    syncPush(records, matrix);
   });
   syncListen(function(data) {
-    if (data.records) {
-      localStorage.setItem('lyu_resolved', JSON.stringify(data.records));
-    }
-    if (data.matrix) {
-      localStorage.setItem('lyu_matrix', JSON.stringify(data.matrix));
-    }
+    if (data.records) localStorage.setItem('lyu_resolved', JSON.stringify(data.records));
+    if (data.matrix) localStorage.setItem('lyu_matrix', JSON.stringify(data.matrix));
     if (currentPage !== 'settings') destroyCharts();
     renderPage(currentPage);
     updateSyncStatus('已同步', true);
   });
-  updateSyncStatus('同步中...', true);
 }
 
 function deactivateSync() {
@@ -1062,6 +1080,8 @@ window.saveEdit = function() {
   }
   localStorage.setItem('lyu_records', JSON.stringify(saved));
   _editOrig = null;
+  // Also update resolved when sync is active
+  if (isSyncReady()) { var r2 = JSON.parse(localStorage.getItem('lyu_resolved') || '[]'); var idx2 = r2.findIndex(function(x){return x.date===oDate&&x.activity===oAct&&x.category===oCat}); if (idx2>=0) { r2[idx2] = {date:date,location:location,activity:activity,category:category,hours:hours}; } else { r2.push({date:date,location:location,activity:activity,category:category,hours:hours}); } localStorage.setItem('lyu_resolved', JSON.stringify(r2)); }
   closeModal();
   afterLocalSave();
   renderPage('records');
@@ -1083,6 +1103,8 @@ window.deleteRecord = function(date, activity, category) {
     saved = saved.filter(r => !(r.date === date && r.activity === activity && r.category === category));
   }
   localStorage.setItem('lyu_records', JSON.stringify(saved));
+  // Also remove from resolved when sync is active
+  if (isSyncReady()) { var r3 = JSON.parse(localStorage.getItem('lyu_resolved') || '[]'); r3 = r3.filter(function(x){return !(x.date===date&&x.activity===activity&&x.category===category)}); localStorage.setItem('lyu_resolved', JSON.stringify(r3)); }
   afterLocalSave();
   renderPage('records');
 };
